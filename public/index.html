@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Credit Manager - Control Financiero SQLite</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- PANTALLA DE ACCESO / LOGIN -->
+  <div id="auth-screen" class="auth-wrapper">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+          <line x1="2" y1="10" x2="22" y2="10"></line>
+        </svg>
+      </div>
+      <h1 class="auth-title" id="auth-title">Control de Tarjetas</h1>
+      <p class="auth-subtitle" id="auth-subtitle">Base de datos física SQLite en disco</p>
+
+      <form id="auth-form" class="auth-form" onsubmit="return false;">
+        <div class="input-group">
+          <label for="master-pwd" id="pwd-label">Contraseña Maestra</label>
+          <input type="password" id="master-pwd" placeholder="Ingresa tu contraseña" autocomplete="current-password" required>
+        </div>
+
+        <div id="setup-confirm-group" class="input-group hidden">
+          <label for="master-pwd-confirm">Confirmar Contraseña</label>
+          <input type="password" id="master-pwd-confirm" placeholder="Repite tu contraseña">
+        </div>
+
+        <div id="auth-error" class="alert-error hidden"></div>
+
+        <button type="submit" id="btn-auth-submit" class="btn btn-primary btn-block">Desbloquear</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- APLICACIÓN PRINCIPAL -->
+  <div id="app-container" class="app-container hidden">
+    <!-- BARRA SUPERIOR -->
+    <header class="topbar">
+      <div class="brand">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+          <line x1="2" y1="10" x2="22" y2="10"></line>
+        </svg>
+        <span>CardMaster <span class="db-badge">tarjetas.db</span></span>
+      </div>
+
+      <div class="topbar-actions">
+        <button id="theme-toggle-btn" class="icon-btn" title="Cambiar Tema (Claro/Oscuro)">
+          <span id="theme-icon">🌙</span>
+        </button>
+        <button id="lock-btn" class="btn btn-sm btn-outline-danger" title="Bloquear Aplicación">
+          🔒 Bloquear
+        </button>
+      </div>
+    </header>
+
+    <!-- NAVEGACIÓN PRINCIPAL -->
+    <nav class="main-nav">
+      <button class="nav-tab active" data-tab="cards-view">💳 Tarjetas</button>
+      <button class="nav-tab" data-tab="movements-view">📑 Movimientos</button>
+      <button class="nav-tab" data-tab="setaside-view">💰 Fondos Apartados</button>
+      <button class="nav-tab" data-tab="calendar-view">📅 Calendario</button>
+      <button class="nav-tab" data-tab="debts-view">👥 Deudores</button>
+      <button class="nav-tab" data-tab="budgets-view">📊 Presupuestos</button>
+      <button class="nav-tab" data-tab="settings-view">⚙️ Ajustes</button>
+    </nav>
+
+    <!-- ÁREA DE CONTENIDO -->
+    <main class="main-content">
+      
+      <!-- VISTA 1: TARJETAS -->
+      <section id="cards-view" class="tab-pane active">
+        <div class="section-header">
+          <div>
+            <h2>Mis Tarjetas de Crédito</h2>
+            <p class="text-muted">Límites, disponibles, cortes y fondo apartado para pago</p>
+          </div>
+          <button id="btn-new-card" class="btn btn-primary">+ Nueva Tarjeta</button>
+        </div>
+
+        <div id="cards-grid" class="cards-grid">
+          <!-- Tarjetas renderizadas -->
+        </div>
+      </section>
+
+      <!-- VISTA 2: MOVIMIENTOS -->
+      <section id="movements-view" class="tab-pane">
+        <div class="section-header">
+          <div>
+            <h2>Movimientos y Gastos</h2>
+            <p class="text-muted">Registro de compras y cobros asignados</p>
+          </div>
+          <div class="header-actions-wrap">
+            <button id="btn-print-movements" class="btn btn-secondary">🖨️ Exportar PDF</button>
+            <button id="btn-new-movement" class="btn btn-primary">+ Nuevo Gasto</button>
+          </div>
+        </div>
+
+        <!-- Filtros -->
+        <div class="filter-bar">
+          <div class="form-group inline">
+            <label for="filter-card">Tarjeta:</label>
+            <select id="filter-card" class="form-control">
+              <option value="all">Todas las tarjetas</option>
+            </select>
+          </div>
+          <div class="form-group inline">
+            <label for="filter-person">Persona:</label>
+            <select id="filter-person" class="form-control">
+              <option value="all">Todas las personas</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table" id="movements-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th>Tarjeta</th>
+                <th>Persona</th>
+                <th>Monto</th>
+                <th>Estado Dinero</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="movements-tbody">
+              <!-- Filas dinámicas -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- VISTA 3: FONDOS APARTADOS (NUEVA LÓGICA) -->
+      <section id="setaside-view" class="tab-pane">
+        <div class="section-header">
+          <div>
+            <h2>Dinero Apartado para Pago</h2>
+            <p class="text-muted">Dinero en mano entregado por personas o guardado por ti para pagar el corte</p>
+          </div>
+          <div class="header-actions-wrap">
+            <button id="btn-transfer-funds" class="btn btn-secondary">🔄 Mover Efectivo ⇄ Débito</button>
+            <button id="btn-new-setaside" class="btn btn-primary">+ Apartar Dinero</button>
+          </div>
+        </div>
+
+        <div class="setaside-summary-grid" id="setaside-summary-cards">
+          <!-- Bolsas de apartados por cada tarjeta -->
+        </div>
+
+        <div class="collapsible-header-bar" id="toggle-setasides-table">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span id="setasides-chevron" class="accordion-chevron">▼</span>
+            <h3 style="margin:0; font-size:1.1rem;">Historial de Entregas y Apartados</h3>
+          </div>
+          <span class="small text-muted" id="setasides-count-badge">Clic para colapsar / mostrar</span>
+        </div>
+        <div class="table-container collapsible-content" id="setasides-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tarjeta Destino</th>
+                <th>Entregado Por</th>
+                <th>Ubicación</th>
+                <th>Monto Apartado</th>
+                <th>Nota / Detalle</th>
+              </tr>
+            </thead>
+            <tbody id="setaside-tbody">
+              <!-- Filas de apartados -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- VISTA 4: CALENDARIO -->
+      <section id="calendar-view" class="tab-pane">
+        <div class="section-header">
+          <div>
+            <h2>Calendario y Ventanas de Pago</h2>
+            <p class="text-muted">Corte + 1 al Corte + 15 (15 días de ventana)</p>
+          </div>
+        </div>
+
+        <div class="calendar-cards-summary" id="calendar-cards-summary"></div>
+
+        <div class="calendar-widget-box">
+          <div class="calendar-nav-bar">
+            <button id="cal-prev-month" class="btn btn-sm btn-secondary">&lt;</button>
+            <h3 id="cal-month-title">Mes Año</h3>
+            <button id="cal-next-month" class="btn btn-sm btn-secondary">&gt;</button>
+          </div>
+          <div class="calendar-grid-header">
+            <div>Dom</div><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div>
+          </div>
+          <div class="calendar-days-grid" id="calendar-days-grid"></div>
+        </div>
+      </section>
+
+      <!-- VISTA 5: DEUDORES / RESUMEN CONSOLIDADO -->
+      <section id="debts-view" class="tab-pane">
+        <div class="section-header">
+          <div>
+            <h2>Consolidado de Personas y Deudas</h2>
+            <p class="text-muted">Distingue entre lo gastado y lo que realmente falta por cobrar</p>
+          </div>
+          <button id="btn-new-person" class="btn btn-primary">+ Nueva Persona</button>
+        </div>
+
+        <div id="debts-summary-container" class="debts-grid"></div>
+      </section>
+
+      <!-- VISTA 6: PRESUPUESTOS -->
+      <section id="budgets-view" class="tab-pane">
+        <div class="section-header">
+          <div>
+            <h2>Presupuestos y Proyecciones</h2>
+            <p class="text-muted">Comparativa interanual con porcentaje global de incremento</p>
+          </div>
+          <button id="btn-new-budget" class="btn btn-primary">+ Nuevo Presupuesto</button>
+        </div>
+
+        <div class="budget-global-control card-box">
+          <div class="budget-ctrl-flex">
+            <div>
+              <strong>Tasa de Incremento Interanual Global (%):</strong>
+              <p class="text-muted small">Afecta automáticamente la columna del siguiente año en todos los presupuestos.</p>
+            </div>
+            <div class="inline-input-group">
+              <input type="number" id="global-inflation-input" class="form-control" style="width: 100px;" value="6" step="0.5" min="0">
+              <button id="btn-save-inflation" class="btn btn-secondary">Guardar %</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="budgets-accordion" class="budgets-accordion"></div>
+      </section>
+
+      <!-- VISTA 7: AJUSTES Y SINCRONIZACIÓN -->
+      <section id="settings-view" class="tab-pane">
+        <div class="section-header">
+          <div>
+            <h2>Ajustes y Sincronización</h2>
+            <p class="text-muted">Fusión entre PC y celular, seguridad y reseteo</p>
+          </div>
+        </div>
+
+        <div class="settings-grid">
+          <!-- Bloque Cambiar Contraseña -->
+          <div class="settings-card">
+            <h3>Seguridad de la Bóveda</h3>
+            <div class="form-group">
+              <label for="old-pwd">Contraseña Actual:</label>
+              <input type="password" id="old-pwd" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="new-pwd">Nueva Contraseña:</label>
+              <input type="password" id="new-pwd" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="new-pwd-confirm">Confirmar Nueva Contraseña:</label>
+              <input type="password" id="new-pwd-confirm" class="form-control">
+            </div>
+            <button id="btn-change-pwd" class="btn btn-primary btn-sm">Actualizar Contraseña</button>
+          </div>
+
+          <!-- Sincronización PC <-> Celular -->
+          <div class="settings-card">
+            <h3>Sincronización PC & Celular</h3>
+            <p class="small text-muted">Descarga el JSON de movimientos de tu celular y arrástralo aquí. Se ejecutará una fusión incremental (*merge*) sin sobrescribir ni duplicar.</p>
+            <div class="action-buttons-col">
+              <button id="btn-export-sync" class="btn btn-secondary btn-block">⬇️ Exportar Archivo de Sincronización</button>
+              
+              <div id="dropzone-sync" class="dropzone-box">
+                <input type="file" id="sync-file-input" accept=".json" class="file-input-hidden">
+                <div class="dropzone-content">
+                  <span class="dropzone-icon">🔄</span>
+                  <div class="dropzone-text">
+                    <strong>Arrastra aquí el archivo del celular</strong> o <span class="dropzone-link">haz clic para elegir</span>
+                  </div>
+                  <span class="dropzone-hint">Fusiona datos en el tarjetas.db</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reseteo de Tarjetas -->
+          <div class="settings-card danger-zone">
+            <h3 class="text-danger">Resetear Tarjetas</h3>
+            <p class="small">Elimina movimientos ordinarios y apartados para liberar saldo al pagar corte. <strong>Los planes MSI, personas y tarjetas no se eliminan.</strong></p>
+            <button id="btn-open-reset-modal" class="btn btn-danger btn-block">Resetear Tarjetas (Requiere Contraseña)</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- MODAL: TARJETA -->
+  <div id="modal-card" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-card-title">Nueva Tarjeta</h3>
+        <button class="modal-close" data-close="modal-card">&times;</button>
+      </div>
+      <form id="form-card">
+        <input type="hidden" id="card-id">
+        <div class="form-group">
+          <label for="card-name">Nombre de la Tarjeta:</label>
+          <input type="text" id="card-name" class="form-control" placeholder="Ej. BBVA Platinum, Nu, Story" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="card-limit">Límite de Crédito ($):</label>
+            <input type="number" id="card-limit" class="form-control" min="0" step="0.01" required>
+          </div>
+          <div class="form-group col">
+            <label for="card-cutoff-day">Día de Corte (1-31):</label>
+            <input type="number" id="card-cutoff-day" class="form-control" min="1" max="31" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="card-color">Color Base:</label>
+          <div class="color-picker-row">
+            <input type="color" id="card-color" value="#1e293b" class="color-swatch-input">
+            <span class="small text-muted">Personaliza el tono de la tarjeta</span>
+          </div>
+        </div>
+        
+        <!-- DROPZONE LOGO -->
+        <div class="form-group">
+          <label>Logo / Imagen del Banco (Opcional):</label>
+          <div id="dropzone-logo" class="dropzone-box">
+            <input type="file" id="card-logo" accept="image/*" class="file-input-hidden">
+            <div class="dropzone-content" id="dropzone-logo-content">
+              <span class="dropzone-icon">🖼️</span>
+              <div class="dropzone-text">
+                <strong>Arrastra una imagen aquí</strong> o <span class="dropzone-link">haz clic</span>
+              </div>
+              <span class="dropzone-hint">PNG, JPG, SVG o WebP</span>
+            </div>
+            <div id="card-logo-preview" class="logo-preview-container hidden">
+              <img id="logo-preview-img" src="" alt="Logo" class="logo-preview-image">
+              <button type="button" id="btn-remove-logo" class="btn btn-sm btn-outline-danger">Quitar imagen</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-card">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Tarjeta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: MOVIMIENTO -->
+  <div id="modal-movement" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-movement-title">Registrar Gasto</h3>
+        <button class="modal-close" data-close="modal-movement">&times;</button>
+      </div>
+      <form id="form-movement">
+        <div class="form-group">
+          <label for="mov-concept">Concepto:</label>
+          <input type="text" id="mov-concept" class="form-control" placeholder="Ej. Despensa, Farmacia, Cena" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="mov-amount">Monto ($):</label>
+            <input type="number" id="mov-amount" class="form-control" step="0.01" min="0.01" required>
+          </div>
+          <div class="form-group col">
+            <label for="mov-date">Fecha:</label>
+            <input type="date" id="mov-date" class="form-control" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="mov-card">Tarjeta:</label>
+            <select id="mov-card" class="form-control" required></select>
+          </div>
+          <div class="form-group col">
+            <label for="mov-person">Persona Responsable:</label>
+            <select id="mov-person" class="form-control" required></select>
+          </div>
+        </div>
+        <div class="form-group checkbox-wrap">
+          <label class="switch-label">
+            <input type="checkbox" id="mov-is-msi">
+            <span>¿Es una compra a Meses Sin Intereses (MSI)?</span>
+          </label>
+        </div>
+        <div id="msi-extra-fields" class="form-row hidden">
+          <div class="form-group col">
+            <label for="mov-msi-months">Plazo:</label>
+            <select id="mov-msi-months" class="form-control">
+              <option value="3">3 Meses</option>
+              <option value="6">6 Meses</option>
+              <option value="9">9 Meses</option>
+              <option value="12" selected>12 Meses</option>
+              <option value="18">18 Meses</option>
+              <option value="24">24 Meses</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-movement">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: REGISTRAR APARTADO -->
+  <div id="modal-setaside" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Registrar Dinero Apartado</h3>
+        <button class="modal-close" data-close="modal-setaside">&times;</button>
+      </div>
+      <form id="form-setaside">
+        <input type="hidden" id="setaside-movement-id">
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="setaside-card">Tarjeta Destino:</label>
+            <select id="setaside-card" class="form-control" required></select>
+          </div>
+          <div class="form-group col">
+            <label for="setaside-person">Persona que entrega:</label>
+            <select id="setaside-person" class="form-control" required></select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="setaside-amount">Monto Entregado ($):</label>
+            <input type="number" id="setaside-amount" class="form-control" step="0.01" min="0.01" required>
+          </div>
+          <div class="form-group col">
+            <label for="setaside-fund-type">Ubicación / Medio:</label>
+            <select id="setaside-fund-type" class="form-control" required>
+              <option value="Efectivo" selected>💵 Efectivo (En mano)</option>
+              <option value="Débito">💳 Tarjeta de Débito</option>
+            </select>
+          </div>
+          <div class="form-group col">
+            <label for="setaside-date">Fecha:</label>
+            <input type="date" id="setaside-date" class="form-control" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="setaside-note">Nota o Concepto:</label>
+          <input type="text" id="setaside-note" class="form-control" placeholder="Ej. Pago de la cena, transferencia recibida">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-setaside">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Confirmar Apartado</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: PERSONA -->
+  <div id="modal-person" class="modal hidden">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3>Gestionar Persona</h3>
+        <button class="modal-close" data-close="modal-person">&times;</button>
+      </div>
+      <form id="form-person">
+        <div class="form-group">
+          <label for="person-name">Nombre o Apodo:</label>
+          <input type="text" id="person-name" class="form-control" placeholder="Ej. Hermano, Amigo 1" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-person">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: PRESUPUESTO -->
+  <div id="modal-budget" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Nuevo Presupuesto</h3>
+        <button class="modal-close" data-close="modal-budget">&times;</button>
+      </div>
+      <form id="form-budget">
+        <div class="form-group">
+          <label for="budget-name">Nombre:</label>
+          <input type="text" id="budget-name" class="form-control" placeholder="Ej. Negocio 1, Casa" required>
+        </div>
+        <div class="form-group">
+          <label for="budget-desc">Descripción:</label>
+          <input type="text" id="budget-desc" class="form-control" placeholder="Detalle u objetivo">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-budget">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CONCEPTO DE PRESUPUESTO -->
+  <div id="modal-budget-item" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Agregar Concepto</h3>
+        <button class="modal-close" data-close="modal-budget-item">&times;</button>
+      </div>
+      <form id="form-budget-item">
+        <input type="hidden" id="item-budget-id">
+        <div class="form-group">
+          <label for="item-concept">Concepto:</label>
+          <input type="text" id="item-concept" class="form-control" placeholder="Ej. Renta, Internet" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="item-amount">Monto Mensual ($):</label>
+            <input type="number" id="item-amount" class="form-control" min="0" step="0.01" required>
+          </div>
+          <div class="form-group col">
+            <label for="item-type">Tipo:</label>
+            <select id="item-type" class="form-control">
+              <option value="Fijo">Gasto Fijo</option>
+              <option value="Variable">Gasto Variable</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="item-tag">Subetiqueta:</label>
+          <input type="text" id="item-tag" class="form-control" placeholder="Ej. Oficina, Servicios">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-budget-item">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar Concepto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: RESET CON CONTRASEÑA -->
+  <div id="modal-reset" class="modal hidden">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3 class="text-danger">Confirmar Reseteo</h3>
+        <button class="modal-close" data-close="modal-reset">&times;</button>
+      </div>
+      <p class="small">Introduce tu contraseña maestra. Se borrarán movimientos ordinarios y apartados para dejar saldos en ceros. <strong>Las tarjetas, personas y planes MSI permanecen intactos.</strong></p>
+      <form id="form-reset">
+        <div class="form-group">
+          <label for="reset-pwd">Contraseña:</label>
+          <input type="password" id="reset-pwd" class="form-control" required>
+        </div>
+        <div id="reset-error" class="alert-error hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-reset">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Confirmar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: DETALLE DE TARJETA & MSI -->
+  <div id="modal-card-details" class="modal hidden">
+    <div class="modal-content modal-lg">
+      <div class="modal-header">
+        <h3 id="card-detail-title">Detalle de Tarjeta</h3>
+        <button class="modal-close" data-close="modal-card-details">&times;</button>
+      </div>
+      <div class="card-detail-body">
+        <div id="card-detail-summary"></div>
+        <h4 style="margin-top: 20px;">Planes Activos a Meses Sin Intereses (MSI)</h4>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Concepto</th>
+                <th>Inicio</th>
+                <th>Fin Estimado</th>
+                <th>Total</th>
+                <th>Mensualidad</th>
+                <th>Progreso</th>
+                <th>Saldo Pendiente</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody id="card-msi-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-close="modal-card-details">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+    <!-- MODAL: ELIMINAR TARJETA CON CONTRASEÑA -->
+  <div id="modal-delete-card" class="modal hidden">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3 class="text-danger">Eliminar Tarjeta</h3>
+        <button class="modal-close" data-close="modal-delete-card">&times;</button>
+      </div>
+      <p class="small" id="delete-card-desc">Ingresa tu contraseña maestra para confirmar la eliminación de esta tarjeta y sus registros.</p>
+      <form id="form-delete-card">
+        <input type="hidden" id="delete-card-id">
+        <div class="form-group">
+          <label for="delete-card-pwd">Contraseña Maestra:</label>
+          <input type="password" id="delete-card-pwd" required autocomplete="current-password">
+        </div>
+        <div id="delete-card-error" class="alert-error hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-delete-card">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Eliminar Tarjeta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+    <!-- MODAL: TRANSFERIR FONDOS ENTRE CUSTODIAS -->
+  <div id="modal-transfer-fund" class="modal hidden">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3>Mover Dinero Entre Fondos</h3>
+        <button class="modal-close" data-close="modal-transfer-fund">&times;</button>
+      </div>
+      <form id="form-transfer-fund">
+        <div class="form-group">
+          <label for="transfer-card">Tarjeta Asociada:</label>
+          <select id="transfer-card" class="form-control" required></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="transfer-from-type">Origen:</label>
+            <select id="transfer-from-type" class="form-control" required>
+              <option value="Efectivo">💵 Efectivo</option>
+              <option value="Débito">💳 Débito</option>
+            </select>
+          </div>
+          <div class="form-group col">
+            <label for="transfer-to-type">Destino:</label>
+            <input type="text" id="transfer-to-type" class="form-control" value="💳 Débito" readonly style="opacity:0.85;">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="transfer-amount">Monto a Mover ($):</label>
+          <input type="number" id="transfer-amount" class="form-control" step="0.01" min="0.01" required placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label for="transfer-note">Nota (Opcional):</label>
+          <input type="text" id="transfer-note" class="form-control" placeholder="Ej. Depósito en cajero BBVA, retiro cajero">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-transfer-fund">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Realizar Traspaso</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- TOASTS -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
