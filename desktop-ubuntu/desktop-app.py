@@ -113,23 +113,31 @@ try:
     Gtk.main()
 
 except Exception as e:
-    # Fallback automático: Abrir como ventana de aplicación independiente en Chrome o navegador
+    # Fallback automático: Abrir como ventana de aplicación independiente en Brave, Chrome o navegador
     print(f"Iniciando modo ventana de aplicación: {e}")
-    # Buscar navegadores que soporten modo app
+    import shutil
     browsers = [
+        ["brave-browser-stable", f"--app={SERVER_URL}"],
+        ["brave-browser", f"--app={SERVER_URL}"],
+        ["brave", f"--app={SERVER_URL}"],
         ["google-chrome", f"--app={SERVER_URL}"],
+        ["google-chrome-stable", f"--app={SERVER_URL}"],
         ["chromium-browser", f"--app={SERVER_URL}"],
         ["chromium", f"--app={SERVER_URL}"],
-        ["brave-browser", f"--app={SERVER_URL}"],
         ["microsoft-edge", f"--app={SERVER_URL}"],
-        ["firefox", "--new-window", SERVER_URL],
         ["xdg-open", SERVER_URL]
     ]
     launched = False
     for cmd in browsers:
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.Popen(cmd)
+                launched = True
+                break
+            except Exception:
+                continue
+    if not launched:
         try:
-            subprocess.Popen(cmd)
-            launched = True
-            break
-        except FileNotFoundError:
-            continue
+            subprocess.Popen(["xdg-open", SERVER_URL])
+        except Exception:
+            pass
