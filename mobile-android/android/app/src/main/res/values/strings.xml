@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CardMaster</string>
+    <string name="title_activity_main">CardMaster</string>
+    <string name="package_name">com.cardmaster.finance</string>
+    <string name="custom_url_scheme">com.cardmaster.finance</string>
+</resources>

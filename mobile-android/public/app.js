@@ -1,5 +1,20 @@
 
 // ==============================================================
+// CONFIGURACIÓN DE ORIGEN DE API PARA MÓVIL Y CAPACITOR NATIVO
+// ==============================================================
+const isNativeApp = !!(window.Capacitor || window.location.protocol === 'file:' || (window.location.hostname === 'localhost' && window.location.port !== '3000'));
+const DEFAULT_API_BASE = 'http://localhost:3000';
+let API_BASE = isNativeApp ? (localStorage.getItem('cardmaster_server_url') || DEFAULT_API_BASE) : '';
+
+const _origFetch = window.fetch;
+window.fetch = function(input, init) {
+  if (typeof input === 'string' && input.startsWith('/api/')) {
+    input = (API_BASE ? API_BASE : '') + input;
+  }
+  return _origFetch.call(this, input, init);
+};
+
+// ==============================================================
 // FORMATEO DE MONEDA CON COMAS PARA MILES Y PUNTO PARA DECIMALES
 // ==============================================================
 function parseMoney(val) {
