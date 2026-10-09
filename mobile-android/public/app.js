@@ -182,8 +182,122 @@ window.addEventListener('DOMContentLoaded', async () => {
   initAllMoneyInputs();
   setupEventListeners();
   setupDragAndDrop();
+  setupServerConnectionControls();
   checkAuthStatus();
 });
+
+// --- GESTIÓN DE CONEXIÓN CON EL SERVIDOR NODE.JS ---
+function getServerTargetUrl() {
+  return API_BASE || (window.location.origin.startsWith('http') ? window.location.origin : DEFAULT_API_BASE);
+}
+
+function updateServerUI(connected) {
+  const dot = document.getElementById('server-status-dot');
+  const pillText = document.getElementById('server-pill-text');
+  const banner = document.getElementById('server-offline-banner');
+  const endpointCode = document.getElementById('current-server-endpoint');
+  const submitBtn = document.getElementById('btn-auth-submit');
+  
+  const target = getServerTargetUrl();
+  if (endpointCode) endpointCode.textContent = target;
+
+  if (connected) {
+    if (dot) dot.className = 'status-dot green';
+    if (pillText) pillText.textContent = 'Servidor: Conectado';
+    if (banner) banner.classList.add('hidden');
+    if (submitBtn) submitBtn.removeAttribute('disabled');
+  } else {
+    if (dot) dot.className = 'status-dot red';
+    if (pillText) pillText.textContent = 'Servidor: Desconectado';
+    if (banner) banner.classList.remove('hidden');
+    if (submitBtn) submitBtn.setAttribute('disabled', 'true');
+  }
+}
+
+function setupServerConnectionControls() {
+  const toggleBtn = document.getElementById('btn-server-settings-toggle');
+  const openBtn = document.getElementById('btn-open-server-config');
+  const closeBtn = document.getElementById('btn-close-server-config');
+  const retryBtn = document.getElementById('btn-retry-connection');
+  const settingsBox = document.getElementById('server-settings-box');
+  const modeTermux = document.getElementById('mode-termux');
+  const modeWifi = document.getElementById('mode-wifi');
+  const customIpGroup = document.getElementById('custom-ip-group');
+  const customIpInput = document.getElementById('custom-server-ip');
+  const saveBtn = document.getElementById('btn-save-server-config');
+
+  const savedUrl = localStorage.getItem('cardmaster_server_url') || '';
+  if (savedUrl && !savedUrl.includes('localhost') && !savedUrl.includes('127.0.0.1')) {
+    if (modeWifi) modeWifi.checked = true;
+    if (customIpGroup) customIpGroup.classList.remove('hidden');
+    if (customIpInput) customIpInput.value = savedUrl;
+  } else {
+    if (modeTermux) modeTermux.checked = true;
+    if (customIpGroup) customIpGroup.classList.add('hidden');
+    if (customIpInput) customIpInput.value = 'http://192.168.10.122:3000';
+  }
+
+  function toggleBox(show) {
+    if (!settingsBox) return;
+    if (typeof show === 'boolean') {
+      settingsBox.classList.toggle('hidden', !show);
+    } else {
+      settingsBox.classList.toggle('hidden');
+    }
+  }
+
+  if (toggleBtn) toggleBtn.addEventListener('click', () => toggleBox());
+  if (openBtn) openBtn.addEventListener('click', () => toggleBox(true));
+  if (closeBtn) closeBtn.addEventListener('click', () => toggleBox(false));
+
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      showToast("Comprobando conexión con " + getServerTargetUrl() + "...", "info");
+      checkAuthStatus();
+    });
+  }
+
+  if (modeTermux) {
+    modeTermux.addEventListener('change', () => {
+      if (customIpGroup) customIpGroup.classList.add('hidden');
+    });
+  }
+
+  if (modeWifi) {
+    modeWifi.addEventListener('change', () => {
+      if (customIpGroup) customIpGroup.classList.remove('hidden');
+      if (customIpInput && !customIpInput.value) {
+        customIpInput.value = 'http://192.168.10.122:3000';
+      }
+      if (customIpInput) customIpInput.focus();
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      let target = '';
+      if (modeWifi && modeWifi.checked) {
+        let val = (customIpInput ? customIpInput.value : '').trim();
+        if (!val) {
+          showToast("Ingresa la dirección IP de tu PC", "warning");
+          return;
+        }
+        if (!val.startsWith('http://') && !val.startsWith('https://')) {
+          val = 'http://' + val;
+        }
+        target = val;
+      } else {
+        target = 'http://localhost:3000';
+      }
+
+      localStorage.setItem('cardmaster_server_url', target);
+      API_BASE = target;
+      toggleBox(false);
+      showToast("Servidor guardado: " + target + ". Probando...", "info");
+      checkAuthStatus();
+    });
+  }
+}
 
 function setupTheme() {
   const saved = localStorage.getItem('theme') || 'dark';
@@ -201,17 +315,30 @@ function setupTheme() {
 
 // --- AUTENTICACIÓN ---
 async function checkAuthStatus() {
+  const dot = document.getElementById('server-status-dot');
+  if (dot) dot.className = 'status-dot yellow';
+  const pillText = document.getElementById('server-pill-text');
+  if (pillText) pillText.textContent = 'Servidor: Conectando...';
+
   try {
     const res = await fetch('/api/auth/status');
+    if (!res.ok) throw new Error("Respuesta no válida del servidor");
     const data = await res.json();
+    updateServerUI(true);
     if (!data.isConfigured) {
       document.getElementById('auth-title').textContent = "Configurar Bóveda SQLite";
       document.getElementById('auth-subtitle').textContent = "Crea tu contraseña maestra para tarjetas.db";
       document.getElementById('setup-confirm-group').classList.remove('hidden');
       document.getElementById('btn-auth-submit').textContent = "Crear Bóveda";
+    } else {
+      document.getElementById('auth-title').textContent = "Control de Tarjetas";
+      document.getElementById('auth-subtitle').textContent = "Base de datos física SQLite en disco";
+      document.getElementById('setup-confirm-group').classList.add('hidden');
+      document.getElementById('btn-auth-submit').textContent = "Desbloquear";
     }
   } catch (err) {
-    showToast("Error conectando con el servidor Node.js", "error");
+    updateServerUI(false);
+    console.warn("No se pudo conectar al servidor:", err);
   }
 }
 

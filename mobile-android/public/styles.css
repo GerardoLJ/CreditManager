@@ -194,6 +194,206 @@ label {
   margin-top: 10px;
 }
 
+/* SERVER CONNECTION STATUS & ASSISTANT */
+.auth-server-header {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.btn-server-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-server-pill:hover {
+  border-color: var(--primary-color);
+  color: var(--text-main);
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.red {
+  background-color: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+.status-dot.green {
+  background-color: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.status-dot.yellow {
+  background-color: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.server-offline-banner {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  text-align: left;
+  display: flex;
+  gap: 12px;
+}
+
+.server-offline-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.server-offline-content {
+  flex: 1;
+}
+
+.server-offline-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #ef4444;
+  margin-bottom: 4px;
+}
+
+.server-offline-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.server-offline-desc code {
+  background: var(--bg-card);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-main);
+  font-size: 0.78rem;
+}
+
+.server-offline-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  background: var(--bg-surface);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+}
+
+.server-offline-hint code {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.server-offline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.server-settings-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.server-box-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.server-box-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.server-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.server-mode-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.server-mode-card:hover {
+  border-color: var(--primary-color);
+}
+
+.server-mode-card input[type="radio"] {
+  margin-top: 3px;
+  cursor: pointer;
+}
+
+.server-mode-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.82rem;
+}
+
+.server-mode-info strong {
+  color: var(--text-main);
+}
+
+.server-mode-info span {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.custom-ip-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  background: var(--bg-surface);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border-color);
+}
+
+.ip-help-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.server-box-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 /* BOTONES GLOBALES UNIFICADOS (CERO BOTONES EN BLANCO) */
 button,
 .btn {

@@ -28,6 +28,68 @@
       <h1 class="auth-title" id="auth-title">Control de Tarjetas</h1>
       <p class="auth-subtitle" id="auth-subtitle">Base de datos física SQLite en disco</p>
 
+      <!-- BARRA DE ESTADO DEL SERVIDOR Y CONFIGURACIÓN -->
+      <div class="auth-server-header">
+        <button type="button" id="btn-server-settings-toggle" class="btn-server-pill" title="Configurar conexión del servidor">
+          <span class="status-dot red" id="server-status-dot"></span>
+          <span id="server-pill-text">Servidor: Comprobando...</span>
+          <span class="server-pill-gear">⚙️</span>
+        </button>
+      </div>
+
+      <!-- BANNER DE SERVIDOR DESCONECTADO -->
+      <div id="server-offline-banner" class="server-offline-banner hidden">
+        <div class="server-offline-icon">📡</div>
+        <div class="server-offline-content">
+          <div class="server-offline-title">No se pudo conectar al servidor Node.js</div>
+          <div class="server-offline-desc">
+            Intentando conectar a: <code id="current-server-endpoint">http://localhost:3000</code>
+          </div>
+          <div class="server-offline-hint">
+            • <b>Si usas Termux en este celular:</b> Abre Termux y ejecuta <code>node server.js</code>.<br>
+            • <b>Si el servidor está en tu PC:</b> Conéctate al mismo Wi-Fi y configura la IP de tu PC.
+          </div>
+          <div class="server-offline-actions">
+            <button type="button" id="btn-retry-connection" class="btn btn-primary btn-sm">🔄 Reintentar Conexión</button>
+            <button type="button" id="btn-open-server-config" class="btn btn-secondary btn-sm">⚙️ Cambiar Servidor / IP</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL DESPLEGABLE DE CONFIGURACIÓN DEL SERVIDOR -->
+      <div id="server-settings-box" class="server-settings-box hidden">
+        <div class="server-box-title">⚙️ Conexión del Servidor</div>
+        <p class="server-box-desc">Selecciona dónde está funcionando tu base de datos SQLite:</p>
+        
+        <div class="server-mode-options">
+          <label class="server-mode-card">
+            <input type="radio" name="server-mode" value="termux" id="mode-termux" checked>
+            <div class="server-mode-info">
+              <strong>📱 En este celular (Termux)</strong>
+              <span>Conecta a <code>http://localhost:3000</code>. Requiere tener Termux abierto con <code>node server.js</code>.</span>
+            </div>
+          </label>
+          <label class="server-mode-card">
+            <input type="radio" name="server-mode" value="wifi" id="mode-wifi">
+            <div class="server-mode-info">
+              <strong>💻 En tu PC por Wi-Fi</strong>
+              <span>Conéctate a tu computadora cuando ejecutas <code>./iniciar-android.sh</code>.</span>
+            </div>
+          </label>
+        </div>
+
+        <div id="custom-ip-group" class="custom-ip-group hidden">
+          <label for="custom-server-ip">Dirección IP de tu PC:</label>
+          <input type="text" id="custom-server-ip" placeholder="http://192.168.10.122:3000" class="form-control" spellcheck="false" autocomplete="off">
+          <small class="ip-help-hint">Ejemplo: <code>http://192.168.10.122:3000</code> (incluye el puerto <code>:3000</code>)</small>
+        </div>
+
+        <div class="server-box-buttons">
+          <button type="button" id="btn-save-server-config" class="btn btn-primary btn-sm">Guardar y Probar</button>
+          <button type="button" id="btn-close-server-config" class="btn btn-secondary btn-sm">Cerrar</button>
+        </div>
+      </div>
+
       <form id="auth-form" class="auth-form" onsubmit="return false;">
         <div class="input-group">
           <label for="master-pwd" id="pwd-label">Contraseña Maestra</label>
