@@ -205,73 +205,18 @@
     }
   };
 
-  // Datos iniciales de arranque (Tarjetas, Movimientos y Contraseña Maestra de tarjetas.db)
-  const INITIAL_SEED = {
-    cards: [
-      { id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", name: "Stori", credit_limit: 20000, cutoff_day: 12, color: "#018960", logo_base64: null, updated_at: 1791237307743 },
-      { id: "6ba85b90-79fb-4279-860e-404af524c1dc", name: "BBVA Platinum", credit_limit: 509700, cutoff_day: 16, color: "#77767b", logo_base64: null, updated_at: 1791506629233 },
-      { id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", name: "Banamex Costco", credit_limit: 58000, cutoff_day: 8, color: "#1e293b", logo_base64: null, updated_at: 1791507036454 },
-      { id: "da3bda6f-729c-4f52-8aa7-a15ff51fbb83", name: "Rappi Card", credit_limit: 8000, cutoff_day: 21, color: "#ff7800", logo_base64: null, updated_at: 1791507291751 },
-      { id: "5c35f8fb-3493-494e-bac3-a7d5e03dbbc0", name: "HSBC VIVA", credit_limit: 150000, cutoff_day: 10, color: "#9a9996", logo_base64: null, updated_at: 1791507426384 }
-    ],
-    people: [
-      { id: "fa534717-6cc7-4cd9-8123-4b0049b00734", name: "Personal", updated_at: 1791236901892 },
-      { id: "08e12395-653f-4850-8d64-fe6efb92ef2a", name: "ELH", updated_at: 1791237106177 },
-      { id: "12ad4f8d-e384-429b-a9fa-92ff4afc0afa", name: "BLJ", updated_at: 1791237111899 },
-      { id: "7ce5f9be-0e27-4e88-87a1-3aca98ccd9e8", name: "PLJ", updated_at: 1791237118068 },
-      { id: "5af3a90c-e373-48c1-8636-196d1488b04e", name: "GJG", updated_at: 1791237123102 },
-      { id: "a267b0af-fa28-40c3-83dd-a0ea8059e286", name: "Jess", updated_at: 1791237127642 },
-      { id: "38b9398d-e71e-44d5-8f89-ef2ae71d100c", name: "Gaby", updated_at: 1791237136578 }
-    ],
-    movements: [
-      { id: "8b496f3f-aa29-4408-bfba-f7bb69dbb2bf", concept: "Gatsos", amount: 2900, date: "2026-10-09", card_id: "6ba85b90-79fb-4279-860e-404af524c1dc", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", is_set_aside: 0, updated_at: 1791506679553 },
-      { id: "9c2039f2-113e-4304-8531-ae0173a503b6", concept: "Mexiquense", amount: 2000, date: "2026-10-09", card_id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", person_id: "08e12395-653f-4850-8d64-fe6efb92ef2a", is_set_aside: 0, updated_at: 1791506769589 },
-      { id: "67ce8ee5-243e-4adb-af24-bab50fb0c491", concept: "Mr. Pampas Tijuana", amount: 1331, date: "2026-10-09", card_id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", person_id: "a267b0af-fa28-40c3-83dd-a0ea8059e286", is_set_aside: 0, updated_at: 1791506810071 },
-      { id: "788647dc-e5d3-4b7d-863e-2708c9303ab1", concept: "Personal", amount: 7569, date: "2026-10-09", card_id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", is_set_aside: 0, updated_at: 1791506958270 },
-      { id: "208099b5-d0de-4b2f-acc5-a0c189c1ee6c", concept: "Personal", amount: 6500, date: "2026-10-09", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", is_set_aside: 0, updated_at: 1791507065319 },
-      { id: "d8bfb45e-cfae-4122-a38f-107c10b138aa", concept: "Gastos", amount: 171, date: "2026-10-09", card_id: "da3bda6f-729c-4f52-8aa7-a15ff51fbb83", person_id: "08e12395-653f-4850-8d64-fe6efb92ef2a", is_set_aside: 0, updated_at: 1791507312982 },
-      { id: "0af6d29c-b2a8-4c1e-9935-3d69a975f6eb", concept: "Súper Gaby", amount: 4200, date: "2026-10-09", card_id: "5c35f8fb-3493-494e-bac3-a7d5e03dbbc0", person_id: "08e12395-653f-4850-8d64-fe6efb92ef2a", is_set_aside: 0, updated_at: 1791507482522 },
-      { id: "454c771b-36bf-454c-8e5e-b075972eaa33", concept: "Gasolina", amount: 1312, date: "2026-10-09", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", is_set_aside: 0, updated_at: 1791510093437 }
-    ],
-    installment_plans: [],
-    set_asides: [
-      { id: "6f7c4f47-0fce-479b-9d66-0706eccde15b", card_id: "6ba85b90-79fb-4279-860e-404af524c1dc", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", movement_id: null, amount: 900, note: "Apartado en NU", date: "2026-10-09", updated_at: 1791506731511, fund_type: "Débito" },
-      { id: "70062f7a-aff1-41b6-8cf4-a8a8c1ffa85c", card_id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", person_id: "a267b0af-fa28-40c3-83dd-a0ea8059e286", movement_id: null, amount: 1331, note: "Apartado en NU", date: "2026-10-09", updated_at: 1791506829666, fund_type: "Débito" },
-      { id: "59d17188-fa74-4c53-a2b5-32be85e4f0ce", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", movement_id: null, amount: 2200, note: "Apartado en Banamex Costo Débito", date: "2026-10-09", updated_at: 1791507124715, fund_type: "Débito" },
-      { id: "06039e19-cd0c-46f0-800a-3f6bada60007", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", movement_id: null, amount: 1312, note: "Apartado en NU", date: "2026-10-09", updated_at: 1791510123925, fund_type: "Débito" },
-      { id: "1cf8e60a-d3bb-4071-a037-7efd7dc0968d", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", movement_id: null, amount: 1223, note: "Apartado en NU", date: "2026-10-09", updated_at: 1791510394557, fund_type: "Débito" }
-    ],
-    budgets: [
-      { id: "cb800f39-0475-4e53-8afd-8f5cb9014ad6", name: "Personal", description: "Gastos Fijos Mensuales", updated_at: 1791238054970 },
-      { id: "e62a5944-1e48-4689-b71f-039399b322b3", name: "ELH", description: "Presupuesto 2", updated_at: 1791238539701 }
-    ],
-    budget_items: [
-      { id: "734f74ce-5a7b-4278-98c4-3e659f4e7fa2", budget_id: "cb800f39-0475-4e53-8afd-8f5cb9014ad6", concept: "UNEFON", amount: 300, type: "Fijo", tag: "Teléfono", updated_at: 1791238135542 },
-      { id: "36d70ca5-3e4d-4acb-b2ee-f070d5968a7a", budget_id: "cb800f39-0475-4e53-8afd-8f5cb9014ad6", concept: "Gasolina", amount: 4000, type: "Fijo", tag: "Automovil", updated_at: 1791238166387 },
-      { id: "a345402a-3730-4c3a-b752-48173de4b379", budget_id: "cb800f39-0475-4e53-8afd-8f5cb9014ad6", concept: "Súper", amount: 5000, type: "Fijo", tag: "Comida", updated_at: 1791238181326 },
-      { id: "15574d87-23b1-443b-8b83-863deec2cecc", budget_id: "e62a5944-1e48-4689-b71f-039399b322b3", concept: "Spotify", amount: 250, type: "Fijo", tag: "Extras", updated_at: 1791238581646 },
-      { id: "f38dd97c-b915-4780-b93e-1f531e280d99", budget_id: "e62a5944-1e48-4689-b71f-039399b322b3", concept: "TotalPlay", amount: 600, type: "Fijo", tag: "Internet", updated_at: 1791238637508 },
-      { id: "bbd90dbb-83cd-4519-8859-f7475e33fa61", budget_id: "e62a5944-1e48-4689-b71f-039399b322b3", concept: "Filtro Agua", amount: 400, type: "Fijo", tag: "Casa", updated_at: 1791238747051 }
-    ],
-    config: {
-      inflation_rate: "10",
-      master_pwd_hash: "b36f250c8d95cde91738c2550611673a48ab194125c365d93ee220e08c14986c",
-      master_pwd_salt: "e65ea99c682d25f2718acfbc9ad11c01"
-    }
-  };
-
-  // Inicializar almacenamiento local con datos listos para usar
+  // Inicializar almacenamiento local en estado limpio de fábrica (sin registros personales ni contraseñas)
   function initDefaults() {
     const isInit = localStorage.getItem('cm_data_initialized');
     if (!isInit) {
-      DB.set('cards', INITIAL_SEED.cards);
-      DB.set('people', INITIAL_SEED.people);
-      DB.set('movements', INITIAL_SEED.movements);
-      DB.set('installment_plans', INITIAL_SEED.installment_plans);
-      DB.set('set_asides', INITIAL_SEED.set_asides);
-      DB.set('budgets', INITIAL_SEED.budgets);
-      DB.set('budget_items', INITIAL_SEED.budget_items);
-      DB.setConfig(INITIAL_SEED.config);
+      DB.set('cards', []);
+      DB.set('people', [{ id: getUUID(), name: 'Personal', updated_at: Date.now() }]);
+      DB.set('movements', []);
+      DB.set('installment_plans', []);
+      DB.set('set_asides', []);
+      DB.set('budgets', []);
+      DB.set('budget_items', []);
+      DB.setConfig({ inflation_rate: '10' });
       localStorage.setItem('cm_data_initialized', '1');
     }
   }

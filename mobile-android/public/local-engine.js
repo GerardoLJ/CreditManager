@@ -14,29 +14,128 @@
     return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  // --- FALLBACK CRIPTOGRÁFICO PURO JAVASCRIPT (Garantiza funcionamiento en file:// o navegadores sin HTTPS) ---
+  function sha256_bytes_pure(bytes) {
+    function rightRotate(value, amount) { return (value >>> amount) | (value << (32 - amount)); }
+    const mathPow = Math.pow, maxWord = mathPow(2, 32);
+    const words = [];
+    const bitLength = bytes.length * 8;
+    let hash = [];
+    const k = [];
+    let primeCounter = 0;
+    const isComposite = {};
+    for (let candidate = 2; primeCounter < 64; candidate++) {
+      if (!isComposite[candidate]) {
+        for (let i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+        hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+        k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+      }
+    }
+    const padded = new Uint8Array(Math.ceil((bytes.length + 9) / 64) * 64);
+    padded.set(bytes);
+    padded[bytes.length] = 0x80;
+    const view = new DataView(padded.buffer);
+    view.setUint32(padded.length - 4, bitLength, false);
+    for (let i = 0; i < padded.length; i += 4) words.push(view.getUint32(i, false));
+    for (let j = 0; j < words.length; j += 16) {
+      const w = words.slice(j, j + 16);
+      const oldHash = hash.slice();
+      for (let i = 0; i < 64; i++) {
+        const w15 = w[i - 15], w2 = w[i - 2];
+        const a = hash[0], e = hash[4];
+        const temp1 = (hash[7] + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) + ((e & hash[5]) ^ (~e & hash[6])) + k[i] +
+          (w[i] = i < 16 ? w[i] : (w[i - 16] + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) + w[i - 7] + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) | 0)) | 0;
+        const temp2 = ((rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]))) | 0;
+        hash = [(temp1 + temp2) | 0].concat(hash.slice(0, 7));
+        hash[4] = (hash[4] + temp1) | 0;
+      }
+      for (let i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+    }
+    const result = new Uint8Array(32);
+    const outView = new DataView(result.buffer);
+    for (let i = 0; i < 8; i++) outView.setUint32(i * 4, hash[i], false);
+    return result;
+  }
+
+  function hmac_sha256_pure(key, message) {
+    const blockSize = 64;
+    let k = new Uint8Array(key);
+    if (k.length > blockSize) k = sha256_bytes_pure(k);
+    if (k.length < blockSize) {
+      const paddedKey = new Uint8Array(blockSize);
+      paddedKey.set(k);
+      k = paddedKey;
+    }
+    const oKeyPad = new Uint8Array(blockSize);
+    const iKeyPad = new Uint8Array(blockSize);
+    for (let i = 0; i < blockSize; i++) {
+      oKeyPad[i] = k[i] ^ 0x5c;
+      iKeyPad[i] = k[i] ^ 0x36;
+    }
+    const inner = new Uint8Array(blockSize + message.length);
+    inner.set(iKeyPad, 0);
+    inner.set(message, blockSize);
+    const innerHash = sha256_bytes_pure(inner);
+    const outer = new Uint8Array(blockSize + 32);
+    outer.set(oKeyPad, 0);
+    outer.set(innerHash, blockSize);
+    return sha256_bytes_pure(outer);
+  }
+
+  function pbkdf2_sync_pure(password, saltStr, iterations = 100000, keyLen = 32) {
+    const enc = new TextEncoder();
+    const pwdBytes = enc.encode(password);
+    const saltBytes = enc.encode(saltStr);
+    const numBlocks = Math.ceil(keyLen / 32);
+    const result = new Uint8Array(numBlocks * 32);
+    for (let b = 1; b <= numBlocks; b++) {
+      const initialMsg = new Uint8Array(saltBytes.length + 4);
+      initialMsg.set(saltBytes, 0);
+      initialMsg[saltBytes.length] = (b >>> 24) & 255;
+      initialMsg[saltBytes.length + 1] = (b >>> 16) & 255;
+      initialMsg[saltBytes.length + 2] = (b >>> 8) & 255;
+      initialMsg[saltBytes.length + 3] = b & 255;
+      let u = hmac_sha256_pure(pwdBytes, initialMsg);
+      const block = new Uint8Array(u);
+      for (let i = 1; i < iterations; i++) {
+        u = hmac_sha256_pure(pwdBytes, u);
+        for (let j = 0; j < 32; j++) block[j] ^= u[j];
+      }
+      result.set(block, (b - 1) * 32);
+    }
+    return Array.from(result.subarray(0, keyLen)).map(x => x.toString(16).padStart(2, "0")).join("");
+  }
+
   // PBKDF2 compatible 100% con Node.js (crypto.pbkdf2Sync con salt string)
   async function hashPasswordPbkdf2(password, saltHex) {
-    const enc = new TextEncoder();
-    const keyMaterial = await window.crypto.subtle.importKey(
-      'raw',
-      enc.encode(password),
-      { name: 'PBKDF2' },
-      false,
-      ['deriveBits']
-    );
-    // Sal como bytes UTF-8 (exactamente como lo interpreta crypto.pbkdf2Sync(pwd, salt, ...))
-    const saltBytes = enc.encode(saltHex);
-    const derivedBits = await window.crypto.subtle.deriveBits(
-      {
-        name: 'PBKDF2',
-        salt: saltBytes,
-        iterations: 100000,
-        hash: 'SHA-256'
-      },
-      keyMaterial,
-      256
-    );
-    return Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+    if (window.crypto && window.crypto.subtle) {
+      try {
+        const enc = new TextEncoder();
+        const keyMaterial = await window.crypto.subtle.importKey(
+          'raw',
+          enc.encode(password),
+          { name: 'PBKDF2' },
+          false,
+          ['deriveBits']
+        );
+        // Sal como bytes UTF-8 (exactamente como lo interpreta crypto.pbkdf2Sync(pwd, salt, ...))
+        const saltBytes = enc.encode(saltHex);
+        const derivedBits = await window.crypto.subtle.deriveBits(
+          {
+            name: 'PBKDF2',
+            salt: saltBytes,
+            iterations: 100000,
+            hash: 'SHA-256'
+          },
+          keyMaterial,
+          256
+        );
+        return Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) {
+        console.warn("Aviso WebCrypto, usando fallback JS:", e);
+      }
+    }
+    return pbkdf2_sync_pure(password, saltHex, 100000, 32);
   }
 
   // Soporte retrocompatible por si alguna versión anterior de mobile guardó sal binaria
