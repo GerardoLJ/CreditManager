@@ -308,16 +308,19 @@ async function checkAuthStatus() {
     if (!res.ok) throw new Error("Respuesta no válida del servidor");
     const data = await res.json();
     updateServerUI(true);
+    const btnAuthFactory = document.getElementById('btn-auth-factory-reset');
     if (!data.isConfigured) {
       document.getElementById('auth-title').textContent = "Configurar Bóveda SQLite";
       document.getElementById('auth-subtitle').textContent = "Crea tu contraseña maestra para tarjetas.db";
       document.getElementById('setup-confirm-group').classList.remove('hidden');
       document.getElementById('btn-auth-submit').textContent = "Crear Bóveda";
+      if (btnAuthFactory) btnAuthFactory.classList.add('hidden');
     } else {
       document.getElementById('auth-title').textContent = "Control de Tarjetas";
       document.getElementById('auth-subtitle').textContent = "Base de datos física SQLite en disco";
       document.getElementById('setup-confirm-group').classList.add('hidden');
       document.getElementById('btn-auth-submit').textContent = "Desbloquear";
+      if (btnAuthFactory) btnAuthFactory.classList.remove('hidden');
     }
   } catch (err) {
     updateServerUI(false);
@@ -1264,6 +1267,46 @@ async function handleReset(e) {
   showToast("Tarjetas reseteadas a ceros. MSI preservados", "success");
 }
 
+// --- RESTAURACIÓN DE FÁBRICA ---
+async function handleFactoryReset(e) {
+  e.preventDefault();
+  const pwd = document.getElementById('factory-reset-pwd').value;
+  const errDiv = document.getElementById('factory-reset-error');
+  errDiv.classList.add('hidden');
+
+  try {
+    const res = await fetch('/api/system/factory-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errDiv.textContent = data.error || 'Error al restaurar de fábrica';
+      errDiv.classList.remove('hidden');
+      return;
+    }
+
+    document.getElementById('modal-factory-reset').classList.add('hidden');
+    document.getElementById('factory-reset-pwd').value = '';
+
+    // Bloquear aplicación y devolver a pantalla de bienvenida / login
+    document.getElementById('app-container').classList.add('hidden');
+    document.getElementById('auth-screen').classList.remove('hidden');
+    document.getElementById('master-pwd').value = '';
+    const confirmInput = document.getElementById('master-pwd-confirm');
+    if (confirmInput) confirmInput.value = '';
+
+    showToast("✨ Base de datos restaurada de fábrica con éxito", "success");
+
+    // Reconfigurar pantalla de autenticación para nuevo usuario
+    await checkAuthStatus();
+  } catch (err) {
+    errDiv.textContent = 'Error de conexión: ' + err.message;
+    errDiv.classList.remove('hidden');
+  }
+}
+
 // --- SINCRONIZACIÓN FUSIÓN INCREMENTAL CON CELULAR ---
 async function handleExportSync() {
   window.location.href = '/api/sync/export';
@@ -1642,6 +1685,29 @@ function setupEventListeners() {
     document.getElementById('modal-reset').classList.remove('hidden');
   });
   document.getElementById('form-reset').addEventListener('submit', handleReset);
+
+  const btnOpenFactoryReset = document.getElementById('btn-open-factory-reset-modal');
+  if (btnOpenFactoryReset) {
+    btnOpenFactoryReset.addEventListener('click', () => {
+      document.getElementById('factory-reset-pwd').value = '';
+      document.getElementById('factory-reset-error').classList.add('hidden');
+      document.getElementById('modal-factory-reset').classList.remove('hidden');
+    });
+  }
+
+  const btnAuthFactory = document.getElementById('btn-auth-factory-reset');
+  if (btnAuthFactory) {
+    btnAuthFactory.addEventListener('click', () => {
+      document.getElementById('factory-reset-pwd').value = '';
+      document.getElementById('factory-reset-error').classList.add('hidden');
+      document.getElementById('modal-factory-reset').classList.remove('hidden');
+    });
+  }
+
+  const formFactoryReset = document.getElementById('form-factory-reset');
+  if (formFactoryReset) {
+    formFactoryReset.addEventListener('submit', handleFactoryReset);
+  }
 
   document.getElementById('btn-save-inflation').addEventListener('click', handleSaveInflation);
   document.getElementById('btn-export-sync').addEventListener('click', handleExportSync);

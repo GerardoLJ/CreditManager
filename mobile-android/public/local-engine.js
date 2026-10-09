@@ -325,6 +325,28 @@
       return { success: true };
     }
 
+    if (path === '/api/system/factory-reset') {
+      const { password } = body;
+      const cfg = DB.getConfig();
+      if (!cfg.master_pwd_hash || !cfg.master_pwd_salt) {
+        return { status: 400, error: 'La base de datos no está configurada' };
+      }
+      const ok = await verifyPassword(password, cfg.master_pwd_hash, cfg.master_pwd_salt);
+      if (!ok) {
+        return { status: 401, error: 'Contraseña incorrecta. No se pudo restaurar de fábrica.' };
+      }
+      DB.set('cards', []);
+      DB.set('movements', []);
+      DB.set('installment_plans', []);
+      DB.set('set_asides', []);
+      DB.set('budgets', []);
+      DB.set('budget_items', []);
+      DB.set('people', [{ id: getUUID(), name: 'Personal', updated_at: Date.now() }]);
+      DB.set('config', { inflation_rate: '10' });
+      try { localStorage.removeItem('cm_data_initialized'); } catch (e) {}
+      return { success: true, message: 'Base de datos restaurada de fábrica con éxito' };
+    }
+
     // 3. PERSONAS
     if (path === '/api/people') {
       if (method === 'GET') {

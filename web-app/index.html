@@ -110,6 +110,11 @@
             📂 Cargar / Reemplazar tarjetas.db
           </button>
           <input type="file" id="auth-db-file-input" accept=".db,.sqlite,.sqlite3,.bd" class="file-input-hidden">
+          <div style="margin-top: 6px;">
+            <button type="button" id="btn-auth-factory-reset" class="btn btn-link btn-sm hidden" style="color: #ef4444; font-size: 0.82rem; cursor: pointer; padding: 4px; background: none; border: none; text-decoration: underline;">
+              ⚠️ Restaurar de Fábrica
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -471,6 +476,13 @@
             <p class="small">Elimina movimientos ordinarios y apartados para liberar saldo al pagar corte. <strong>Los planes MSI, personas y tarjetas no se eliminan.</strong></p>
             <button id="btn-open-reset-modal" class="btn btn-danger btn-block">Resetear Tarjetas (Requiere Contraseña)</button>
           </div>
+
+          <!-- Restauración de Fábrica -->
+          <div class="settings-card danger-zone" style="border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.04);">
+            <h3 class="text-danger">Restaurar de Fábrica</h3>
+            <p class="small">Limpia por completo la base de datos: elimina todas las tarjetas, movimientos, apartados, meses sin intereses, presupuestos y la <strong>contraseña maestra</strong>. La aplicación quedará limpia desde cero.</p>
+            <button type="button" id="btn-open-factory-reset-modal" class="btn btn-danger btn-block" style="background-color: #dc2626;">Restaurar de Fábrica (Requiere Contraseña)</button>
+          </div>
         </div>
       </section>
 
@@ -743,6 +755,33 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-close="modal-reset">Cancelar</button>
           <button type="submit" class="btn btn-danger">Confirmar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: RESTAURAR DE FÁBRICA CON CONTRASEÑA -->
+  <div id="modal-factory-reset" class="modal hidden">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3 class="text-danger">⚠️ Restaurar de Fábrica</h3>
+        <button class="modal-close" data-close="modal-factory-reset">&times;</button>
+      </div>
+      <p class="small" style="color: var(--text-secondary); line-height: 1.5;">
+        Esta acción eliminará <strong>permanentemente TODO</strong> de la base de datos: tarjetas, movimientos, meses sin intereses, personas, fondos apartados, presupuestos y tu <strong>contraseña maestra</strong>.
+      </p>
+      <div style="background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; padding: 8px 12px; margin-bottom: 14px; border-radius: 4px; font-size: 0.82rem; color: #ef4444;">
+        La aplicación quedará limpia desde cero como si recién la hubieras instalado.
+      </div>
+      <form id="form-factory-reset">
+        <div class="form-group">
+          <label for="factory-reset-pwd">Introduce tu contraseña actual para confirmar:</label>
+          <input type="password" id="factory-reset-pwd" class="form-control" placeholder="Contraseña actual" required autocomplete="current-password">
+        </div>
+        <div id="factory-reset-error" class="alert-error hidden"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-factory-reset">Cancelar</button>
+          <button type="submit" class="btn btn-danger" style="background-color: #dc2626;">Restaurar de Fábrica</button>
         </div>
       </form>
     </div>

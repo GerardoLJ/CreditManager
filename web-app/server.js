@@ -350,6 +350,37 @@ app.post('/api/cards/reset', (req, res) => {
   });
 });
 
+// Restauración de Fábrica (Limpia toda la base de datos y la contraseña maestra)
+app.post('/api/system/factory-reset', (req, res) => {
+  const { password } = req.body;
+  db.all("SELECT key, value FROM app_config WHERE key IN ('master_pwd_hash', 'master_pwd_salt')", (err, rows) => {
+    if (!rows) return res.status(500).json({ error: 'Error accediendo a la configuración' });
+    const hashRow = rows.find(r => r.key === 'master_pwd_hash');
+    const saltRow = rows.find(r => r.key === 'master_pwd_salt');
+    if (!hashRow || !saltRow || !checkPassword(password, hashRow.value, saltRow.value)) {
+      return res.status(401).json({ error: 'Contraseña incorrecta. No se pudo restaurar de fábrica.' });
+    }
+    db.serialize(() => {
+      db.run("DELETE FROM movements");
+      db.run("DELETE FROM installment_plans");
+      db.run("DELETE FROM set_asides");
+      db.run("DELETE FROM budget_items");
+      db.run("DELETE FROM budgets");
+      db.run("DELETE FROM cards");
+      db.run("DELETE FROM people WHERE name != 'Personal'");
+      db.run("DELETE FROM app_config WHERE key IN ('master_pwd_hash', 'master_pwd_salt')");
+      db.get("SELECT id FROM people WHERE name = 'Personal'", (pErr, pRow) => {
+        if (!pRow) {
+          db.run("INSERT INTO people (id, name, updated_at) VALUES (?, 'Personal', ?)", [crypto.randomUUID(), Date.now()]);
+        }
+      });
+      db.run("VACUUM", () => {
+        res.json({ success: true, message: 'Base de datos restaurada de fábrica con éxito' });
+      });
+    });
+  });
+});
+
 // Sincronización JSON
 app.get('/api/sync/export', (req, res) => {
   db.serialize(() => {
