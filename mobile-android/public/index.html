@@ -63,17 +63,17 @@
         
         <div class="server-mode-options">
           <label class="server-mode-card">
-            <input type="radio" name="server-mode" value="termux" id="mode-termux" checked>
+            <input type="radio" name="server-mode" value="local" id="mode-local" checked>
             <div class="server-mode-info">
-              <strong>📱 En este celular (Termux)</strong>
-              <span>Conecta a <code>http://localhost:3000</code>. Requiere tener Termux abierto con <code>node server.js</code>.</span>
+              <strong>📱 Modo Autónomo (100% en tu Teléfono)</strong>
+              <span>Guarda todo en la memoria de este celular. No necesitas PC ni terminales.</span>
             </div>
           </label>
           <label class="server-mode-card">
             <input type="radio" name="server-mode" value="wifi" id="mode-wifi">
             <div class="server-mode-info">
-              <strong>💻 En tu PC por Wi-Fi</strong>
-              <span>Conéctate a tu computadora cuando ejecutas <code>./iniciar-android.sh</code>.</span>
+              <strong>💻 Conectar a tu PC por Wi-Fi</strong>
+              <span>Usa el servidor de tu computadora si deseas sincronizar datos.</span>
             </div>
           </label>
         </div>
@@ -842,6 +842,7 @@
   <!-- TOASTS -->
   <div id="toast-container" class="toast-container"></div>
 
+  <script src="local-engine.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

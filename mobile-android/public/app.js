@@ -1,18 +1,9 @@
 
 // ==============================================================
-// CONFIGURACIÓN DE ORIGEN DE API PARA MÓVIL Y CAPACITOR NATIVO
+// GESTIÓN DE MOTOR AUTÓNOMO (LOCAL-ENGINE.JS ACTIVO)
 // ==============================================================
-const isNativeApp = !!(window.Capacitor || window.location.protocol === 'file:' || (window.location.hostname === 'localhost' && window.location.port !== '3000'));
-const DEFAULT_API_BASE = 'http://localhost:3000';
-let API_BASE = isNativeApp ? (localStorage.getItem('cardmaster_server_url') || DEFAULT_API_BASE) : '';
-
-const _origFetch = window.fetch;
-window.fetch = function(input, init) {
-  if (typeof input === 'string' && input.startsWith('/api/')) {
-    input = (API_BASE ? API_BASE : '') + input;
-  }
-  return _origFetch.call(this, input, init);
-};
+// local-engine.js se encarga de interceptar y almacenar todo localmente
+// en la memoria privada del celular, permitiendo uso 100% offline sin servidores.
 
 // ==============================================================
 // FORMATEO DE MONEDA CON COMAS PARA MILES Y PUNTO PARA DECIMALES
@@ -195,23 +186,17 @@ function updateServerUI(connected) {
   const dot = document.getElementById('server-status-dot');
   const pillText = document.getElementById('server-pill-text');
   const banner = document.getElementById('server-offline-banner');
-  const endpointCode = document.getElementById('current-server-endpoint');
   const submitBtn = document.getElementById('btn-auth-submit');
   
-  const target = getServerTargetUrl();
-  if (endpointCode) endpointCode.textContent = target;
+  const savedUrl = localStorage.getItem('cardmaster_server_url') || '';
+  const isRemote = Boolean(savedUrl && !savedUrl.includes('localhost') && !savedUrl.includes('127.0.0.1'));
 
-  if (connected) {
-    if (dot) dot.className = 'status-dot green';
-    if (pillText) pillText.textContent = 'Servidor: Conectado';
-    if (banner) banner.classList.add('hidden');
-    if (submitBtn) submitBtn.removeAttribute('disabled');
-  } else {
-    if (dot) dot.className = 'status-dot red';
-    if (pillText) pillText.textContent = 'Servidor: Desconectado';
-    if (banner) banner.classList.remove('hidden');
-    if (submitBtn) submitBtn.setAttribute('disabled', 'true');
+  if (dot) dot.className = 'status-dot green';
+  if (pillText) {
+    pillText.textContent = isRemote ? 'Conectado a PC' : 'Modo Autónomo (Celular)';
   }
+  if (banner) banner.classList.add('hidden');
+  if (submitBtn) submitBtn.removeAttribute('disabled');
 }
 
 function setupServerConnectionControls() {
@@ -220,7 +205,7 @@ function setupServerConnectionControls() {
   const closeBtn = document.getElementById('btn-close-server-config');
   const retryBtn = document.getElementById('btn-retry-connection');
   const settingsBox = document.getElementById('server-settings-box');
-  const modeTermux = document.getElementById('mode-termux');
+  const modeLocal = document.getElementById('mode-local') || document.getElementById('mode-termux');
   const modeWifi = document.getElementById('mode-wifi');
   const customIpGroup = document.getElementById('custom-ip-group');
   const customIpInput = document.getElementById('custom-server-ip');
@@ -232,7 +217,7 @@ function setupServerConnectionControls() {
     if (customIpGroup) customIpGroup.classList.remove('hidden');
     if (customIpInput) customIpInput.value = savedUrl;
   } else {
-    if (modeTermux) modeTermux.checked = true;
+    if (modeLocal) modeLocal.checked = true;
     if (customIpGroup) customIpGroup.classList.add('hidden');
     if (customIpInput) customIpInput.value = 'http://192.168.10.122:3000';
   }
@@ -252,13 +237,13 @@ function setupServerConnectionControls() {
 
   if (retryBtn) {
     retryBtn.addEventListener('click', () => {
-      showToast("Comprobando conexión con " + getServerTargetUrl() + "...", "info");
+      showToast("Comprobando conexión...", "info");
       checkAuthStatus();
     });
   }
 
-  if (modeTermux) {
-    modeTermux.addEventListener('change', () => {
+  if (modeLocal) {
+    modeLocal.addEventListener('change', () => {
       if (customIpGroup) customIpGroup.classList.add('hidden');
     });
   }
@@ -275,7 +260,6 @@ function setupServerConnectionControls() {
 
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
-      let target = '';
       if (modeWifi && modeWifi.checked) {
         let val = (customIpInput ? customIpInput.value : '').trim();
         if (!val) {
@@ -285,15 +269,14 @@ function setupServerConnectionControls() {
         if (!val.startsWith('http://') && !val.startsWith('https://')) {
           val = 'http://' + val;
         }
-        target = val;
+        localStorage.setItem('cardmaster_server_url', val);
+        showToast("Conectando a PC: " + val, "info");
       } else {
-        target = 'http://localhost:3000';
+        localStorage.removeItem('cardmaster_server_url');
+        showToast("Modo Autónomo Local activado", "success");
       }
 
-      localStorage.setItem('cardmaster_server_url', target);
-      API_BASE = target;
       toggleBox(false);
-      showToast("Servidor guardado: " + target + ". Probando...", "info");
       checkAuthStatus();
     });
   }
