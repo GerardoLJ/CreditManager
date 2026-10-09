@@ -104,9 +104,9 @@ cd mobile-android
    - Abre la URL mostrada en la terminal (ejemplo: `http://192.168.1.45:3000`) en Chrome o Firefox.
    - Pulsa los tres puntos del navegador y selecciona **"Instalar aplicación"** o **"Añadir a pantalla de inicio"**.
 2. **Modalidad 100% en el Teléfono (Termux):**
-   - Copia la carpeta `mobile-android/` a tu celular y ejecútala dentro de **Termux** con Node.js para tener tu base de datos SQLite física dentro del teléfono sin necesitar computadora ni Wi-Fi.
-3. **Modalidad APK Nativo (Capacitor):**
-   - La carpeta incluye `capacitor.config.json` para compilar un paquete `.apk` instalable tradicional mediante Android Studio.
+   - Ejecuta CardMaster directamente dentro de tu celular Android usando la app gratuita **Termux** con Node.js, logrando independencia total (tu base de datos SQLite vive en tu celular sin requerir PC ni Wi-Fi). *Consulta la guía paso a paso para no programadores en [`mobile-android/README.md`](mobile-android/README.md).*
+3. **Modalidad APK Nativo (Capacitor + Android Studio):**
+   - La carpeta incluye `capacitor.config.json` para compilar un paquete instalador `.apk` tradicional mediante Android Studio y distribuirlo en cualquier dispositivo Android. *Consulta las instrucciones paso a paso detalladas en [`mobile-android/README.md`](mobile-android/README.md).*
 
 ---
 
