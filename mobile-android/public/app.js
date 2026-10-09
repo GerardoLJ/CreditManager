@@ -1375,10 +1375,15 @@ async function handleRestoreDb(file) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al restaurar");
       showToast("✅ Base de datos sobreescrita con éxito", "success");
+      await checkAuthStatus();
+      const errDiv = document.getElementById('auth-error');
+      if (errDiv) errDiv.classList.add('hidden');
       await loadDbInfo();
       refreshAllData();
       const fileInput = document.getElementById('db-file-input');
       if (fileInput) fileInput.value = '';
+      const authFileInput = document.getElementById('auth-db-file-input');
+      if (authFileInput) authFileInput.value = '';
     } catch (err) {
       alert("Error restaurando base de datos: " + err.message);
     }
@@ -1714,6 +1719,16 @@ function setupDragAndDrop() {
       if (e.dataTransfer.files[0]) handleRestoreDb(e.dataTransfer.files[0]);
     });
     inputDb.addEventListener('change', (e) => {
+      if (e.target.files[0]) handleRestoreDb(e.target.files[0]);
+    });
+  }
+
+  // Restaurar archivo físico tarjetas.db desde pantalla de bloqueo
+  const btnAuthRestore = document.getElementById('btn-auth-restore-db');
+  const inputAuthDb = document.getElementById('auth-db-file-input');
+  if (btnAuthRestore && inputAuthDb) {
+    btnAuthRestore.addEventListener('click', () => inputAuthDb.click());
+    inputAuthDb.addEventListener('change', (e) => {
       if (e.target.files[0]) handleRestoreDb(e.target.files[0]);
     });
   }

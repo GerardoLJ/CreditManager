@@ -14,6 +14,7 @@
     return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  // PBKDF2 compatible 100% con Node.js (crypto.pbkdf2Sync con salt string)
   async function hashPasswordPbkdf2(password, saltHex) {
     const enc = new TextEncoder();
     const keyMaterial = await window.crypto.subtle.importKey(
@@ -23,7 +24,8 @@
       false,
       ['deriveBits']
     );
-    const saltBytes = new Uint8Array(saltHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+    // Sal como bytes UTF-8 (exactamente como lo interpreta crypto.pbkdf2Sync(pwd, salt, ...))
+    const saltBytes = enc.encode(saltHex);
     const derivedBits = await window.crypto.subtle.deriveBits(
       {
         name: 'PBKDF2',
@@ -35,6 +37,46 @@
       256
     );
     return Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Soporte retrocompatible por si alguna versión anterior de mobile guardó sal binaria
+  async function hashPasswordPbkdf2HexLegacy(password, saltHex) {
+    try {
+      const enc = new TextEncoder();
+      const keyMaterial = await window.crypto.subtle.importKey(
+        'raw',
+        enc.encode(password),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits']
+      );
+      const saltBytes = new Uint8Array(saltHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+      const derivedBits = await window.crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          salt: saltBytes,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        256
+      );
+      return Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Función universal de verificación de contraseña
+  async function verifyPassword(password, expectedHash, saltHex) {
+    if (!password || !expectedHash || !saltHex) return false;
+    // 1. Probar primero con sal UTF-8 (el estándar de PC y SQLite tarjetas.db)
+    const hash = await hashPasswordPbkdf2(password, saltHex);
+    if (hash === expectedHash) return true;
+    // 2. Probar fallback con sal binaria
+    const legacyHash = await hashPasswordPbkdf2HexLegacy(password, saltHex);
+    if (legacyHash === expectedHash) return true;
+    return false;
   }
 
   function getUUID() {
@@ -103,8 +145,13 @@
       if (!cfg.master_pwd_hash || !cfg.master_pwd_salt) {
         return { status: 400, error: 'No configurado' };
       }
-      const hash = await hashPasswordPbkdf2(password, cfg.master_pwd_salt);
-      if (hash === cfg.master_pwd_hash) {
+      const ok = await verifyPassword(password, cfg.master_pwd_hash, cfg.master_pwd_salt);
+      if (ok) {
+        // Migrar automáticamente si venía de un formato legacy al estándar UTF-8 de PC
+        const standardHash = await hashPasswordPbkdf2(password, cfg.master_pwd_salt);
+        if (cfg.master_pwd_hash !== standardHash) {
+          DB.setConfig({ master_pwd_hash: standardHash });
+        }
         return { success: true };
       }
       return { status: 401, error: 'Contraseña incorrecta' };
@@ -113,8 +160,8 @@
     if (path === '/api/auth/change-pwd') {
       const { oldPassword, newPassword } = body;
       const cfg = DB.getConfig();
-      const oldHash = await hashPasswordPbkdf2(oldPassword, cfg.master_pwd_salt);
-      if (oldHash !== cfg.master_pwd_hash) {
+      const ok = await verifyPassword(oldPassword, cfg.master_pwd_hash, cfg.master_pwd_salt);
+      if (!ok) {
         return { status: 401, error: 'Contraseña actual incorrecta' };
       }
       const newSalt = generateSaltHex(16);
@@ -156,8 +203,8 @@
       const cardId = path.split('/')[3];
       const { password } = body;
       const cfg = DB.getConfig();
-      const hash = await hashPasswordPbkdf2(password, cfg.master_pwd_salt);
-      if (hash !== cfg.master_pwd_hash) {
+      const ok = await verifyPassword(password, cfg.master_pwd_hash, cfg.master_pwd_salt);
+      if (!ok) {
         return { status: 401, error: 'Contraseña incorrecta. No se eliminó la tarjeta.' };
       }
       DB.set('cards', DB.get('cards').filter(c => c.id !== cardId));
@@ -170,8 +217,8 @@
     if (path === '/api/cards/reset') {
       const { password } = body;
       const cfg = DB.getConfig();
-      const hash = await hashPasswordPbkdf2(password, cfg.master_pwd_salt);
-      if (hash !== cfg.master_pwd_hash) {
+      const ok = await verifyPassword(password, cfg.master_pwd_hash, cfg.master_pwd_salt);
+      if (!ok) {
         return { status: 401, error: 'Contraseña incorrecta' };
       }
       DB.set('movements', []);

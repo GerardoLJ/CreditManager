@@ -93,6 +93,20 @@ function hashPassword(pwd, salt) {
   return crypto.pbkdf2Sync(pwd, salt, 100000, 32, 'sha256').toString('hex');
 }
 
+function hashPasswordHex(pwd, salt) {
+  try {
+    return crypto.pbkdf2Sync(pwd, Buffer.from(salt, 'hex'), 100000, 32, 'sha256').toString('hex');
+  } catch (e) {
+    return null;
+  }
+}
+
+function checkPassword(pwd, expectedHash, salt) {
+  if (hashPassword(pwd, salt) === expectedHash) return true;
+  if (hashPasswordHex(pwd, salt) === expectedHash) return true;
+  return false;
+}
+
 // Auth
 app.get('/api/auth/status', (req, res) => {
   db.get("SELECT value FROM app_config WHERE key = 'master_pwd_hash'", (err, row) => {
@@ -118,7 +132,7 @@ app.post('/api/auth/login', (req, res) => {
     const hashRow = rows.find(r => r.key === 'master_pwd_hash');
     const saltRow = rows.find(r => r.key === 'master_pwd_salt');
     if (!hashRow || !saltRow) return res.status(400).json({ error: 'No configurado' });
-    if (hashPassword(password, saltRow.value) === hashRow.value) res.json({ success: true });
+    if (checkPassword(password, hashRow.value, saltRow.value)) res.json({ success: true });
     else res.status(401).json({ error: 'Contraseña incorrecta' });
   });
 });
@@ -128,7 +142,7 @@ app.post('/api/auth/change-pwd', (req, res) => {
   db.all("SELECT key, value FROM app_config WHERE key IN ('master_pwd_hash', 'master_pwd_salt')", (err, rows) => {
     const hashRow = rows.find(r => r.key === 'master_pwd_hash');
     const saltRow = rows.find(r => r.key === 'master_pwd_salt');
-    if (hashPassword(oldPassword, saltRow.value) !== hashRow.value) {
+    if (!checkPassword(oldPassword, hashRow.value, saltRow.value)) {
       return res.status(401).json({ error: 'Contraseña actual incorrecta' });
     }
     const newSalt = crypto.randomBytes(16).toString('hex');
@@ -165,7 +179,7 @@ app.post('/api/cards/:id/delete', (req, res) => {
     if (!rows) return res.status(500).json({ error: 'Error interno de base de datos' });
     const hashRow = rows.find(r => r.key === 'master_pwd_hash');
     const saltRow = rows.find(r => r.key === 'master_pwd_salt');
-    if (!hashRow || !saltRow || hashPassword(password, saltRow.value) !== hashRow.value) {
+    if (!hashRow || !saltRow || !checkPassword(password, hashRow.value, saltRow.value)) {
       return res.status(401).json({ error: 'Contraseña incorrecta. No se eliminó la tarjeta.' });
     }
     db.serialize(() => {
@@ -325,7 +339,7 @@ app.post('/api/cards/reset', (req, res) => {
   db.all("SELECT key, value FROM app_config WHERE key IN ('master_pwd_hash', 'master_pwd_salt')", (err, rows) => {
     const hashRow = rows.find(r => r.key === 'master_pwd_hash');
     const saltRow = rows.find(r => r.key === 'master_pwd_salt');
-    if (!hashRow || !saltRow || hashPassword(password, saltRow.value) !== hashRow.value) {
+    if (!hashRow || !saltRow || !checkPassword(password, hashRow.value, saltRow.value)) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
     db.serialize(() => {

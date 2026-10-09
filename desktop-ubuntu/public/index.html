@@ -42,6 +42,13 @@
         <div id="auth-error" class="alert-error hidden"></div>
 
         <button type="submit" id="btn-auth-submit" class="btn btn-primary btn-block">Desbloquear</button>
+
+        <div class="auth-extra-actions" style="margin-top: 16px; text-align: center;">
+          <button type="button" id="btn-auth-restore-db" class="btn btn-link btn-sm" style="color: var(--primary); text-decoration: underline; background: none; border: none; font-size: 0.88rem; cursor: pointer; padding: 6px;">
+            📂 Cargar / Reemplazar tarjetas.db
+          </button>
+          <input type="file" id="auth-db-file-input" accept=".db,.sqlite,.sqlite3,.bd" class="file-input-hidden">
+        </div>
       </form>
     </div>
   </div>
