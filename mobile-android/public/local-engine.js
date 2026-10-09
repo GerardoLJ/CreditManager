@@ -563,6 +563,191 @@
       };
     }
 
+    // 11. RESTAURACIÓN DE ARCHIVO FÍSICO SQLite (tarjetas.db)
+    if (path === '/api/database/restore' && method === 'POST') {
+      try {
+        const { dbBase64 } = body;
+        if (!dbBase64) return { status: 400, error: 'No se envió contenido del archivo' };
+
+        const base64Data = dbBase64.replace(/^data:.*?;base64,/, '');
+        const binaryString = atob(base64Data);
+        const len = binaryString.length;
+        if (len < 16) {
+          return { status: 400, error: 'El archivo es demasiado pequeño para ser una base de datos SQLite' };
+        }
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // Validar cabecera SQLite format 3
+        const header = new TextDecoder().decode(bytes.subarray(0, 15));
+        if (header !== 'SQLite format 3') {
+          return { status: 400, error: 'El archivo no tiene el encabezado válido de SQLite (SQLite format 3)' };
+        }
+
+        const initFn = window.initSqlJs || (typeof initSqlJs !== 'undefined' ? initSqlJs : null);
+        if (!initFn) {
+          return { status: 500, error: 'Motor SQL (sql-asm.js) no cargado' };
+        }
+
+        const SQL = await initFn();
+        const db = new SQL.Database(bytes);
+
+        // 1. Extraer app_config
+        try {
+          const cfgRows = db.exec("SELECT key, value FROM app_config");
+          if (cfgRows.length && cfgRows[0].values) {
+            const cfgObj = {};
+            cfgRows[0].values.forEach(([k, v]) => { cfgObj[k] = v; });
+            DB.setConfig(cfgObj);
+          }
+        } catch (e) { console.warn("Aviso app_config:", e); }
+
+        // 2. Extraer cards
+        try {
+          const res = db.exec("SELECT * FROM cards");
+          if (res.length && res[0].values) {
+            const cols = res[0].columns;
+            DB.set('cards', res[0].values.map(r => {
+              const o = {}; cols.forEach((c, idx) => { o[c] = r[idx]; }); return o;
+            }));
+          } else { DB.set('cards', []); }
+        } catch (e) { DB.set('cards', []); }
+
+        // 3. Extraer people
+        try {
+          const res = db.exec("SELECT * FROM people");
+          if (res.length && res[0].values) {
+            const cols = res[0].columns;
+            DB.set('people', res[0].values.map(r => {
+              const o = {}; cols.forEach((c, idx) => { o[c] = r[idx]; }); return o;
+            }));
+          } else { DB.set('people', []); }
+        } catch (e) { DB.set('people', []); }
+
+        // 4. Extraer movements
+        try {
+          const res = db.exec("SELECT * FROM movements");
+          if (res.length && res[0].values) {
+            const cols = res[0].columns;
+            DB.set('movements', res[0].values.map(r => {
+              const o = {}; cols.forEach((c, idx) => { o[c] = r[idx]; }); return o;
+            }));
+          } else { DB.set('movements', []); }
+        } catch (e) { DB.set('movements', []); }
+
+        // 5. Extraer installment_plans
+        try {
+          const res = db.exec("SELECT * FROM installment_plans");
+          if (res.length && res[0].values) {
+            const cols = res[0].columns;
+            DB.set('installment_plans', res[0].values.map(r => {
+              const o = {}; cols.forEach((c, idx) => { o[c] = r[idx]; }); return o;
+            }));
+          } else { DB.set('installment_plans', []); }
+        } catch (e) { DB.set('installment_plans', []); }
+
+        // 6. Extraer set_asides
+        try {
+          const res = db.exec("SELECT * FROM set_asides");
+          if (res.length && res[0].values) {
+            const cols = res[0].columns;
+            DB.set('set_asides', res[0].values.map(r => {
+              const o = {}; cols.forEach((c, idx) => { o[c] = r[idx]; }); return o;
+            }));
+          } else { DB.set('set_asides', []); }
+        } catch (e) { DB.set('set_asides', []); }
+
+        // 7. Extraer budgets
+        try {
+          const res = db.exec("SELECT * FROM budgets");
+          if (res.length && res[0].values) {
+            const cols = res[0].columns;
+            DB.set('budgets', res[0].values.map(r => {
+              const o = {}; cols.forEach((c, idx) => { o[c] = r[idx]; }); return o;
+            }));
+          } else { DB.set('budgets', []); }
+        } catch (e) { DB.set('budgets', []); }
+
+        // 8. Extraer budget_items
+        try {
+          const res = db.exec("SELECT * FROM budget_items");
+          if (res.length && res[0].values) {
+            const cols = res[0].columns;
+            DB.set('budget_items', res[0].values.map(r => {
+              const o = {}; cols.forEach((c, idx) => { o[c] = r[idx]; }); return o;
+            }));
+          } else { DB.set('budget_items', []); }
+        } catch (e) { DB.set('budget_items', []); }
+
+        db.close();
+
+        return { success: true, message: 'Base de datos tarjetas.db restaurada exitosamente' };
+      } catch (err) {
+        console.error('Error restaurando tarjetas.db:', err);
+        return { status: 500, error: 'Error procesando archivo: ' + err.message };
+      }
+    }
+
+    // 12. DESCARGA / EXPORTACIÓN DE BASE DE DATOS FÍSICA SQLite (.db)
+    if (path === '/api/database/download' && method === 'GET') {
+      try {
+        const initFn = window.initSqlJs || (typeof initSqlJs !== 'undefined' ? initSqlJs : null);
+        if (!initFn) return { status: 500, error: 'sql-asm.js no disponible' };
+        const SQL = await initFn();
+        const db = new SQL.Database();
+
+        db.run(`CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, name TEXT NOT NULL, credit_limit REAL NOT NULL, cutoff_day INTEGER NOT NULL, color TEXT, logo_base64 TEXT, updated_at INTEGER)`);
+        db.run(`CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, updated_at INTEGER)`);
+        db.run(`CREATE TABLE IF NOT EXISTS movements (id TEXT PRIMARY KEY, concept TEXT NOT NULL, amount REAL NOT NULL, date TEXT NOT NULL, card_id TEXT NOT NULL, person_id TEXT NOT NULL, is_set_aside INTEGER DEFAULT 0, updated_at INTEGER)`);
+        db.run(`CREATE TABLE IF NOT EXISTS installment_plans (id TEXT PRIMARY KEY, concept TEXT NOT NULL, total_amount REAL NOT NULL, months INTEGER NOT NULL, start_date TEXT NOT NULL, card_id TEXT NOT NULL, person_id TEXT NOT NULL, paid_months INTEGER DEFAULT 0, updated_at INTEGER)`);
+        db.run(`CREATE TABLE IF NOT EXISTS set_asides (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, person_id TEXT NOT NULL, movement_id TEXT, amount REAL NOT NULL, fund_type TEXT DEFAULT 'Efectivo', note TEXT, date TEXT NOT NULL, updated_at INTEGER)`);
+        db.run(`CREATE TABLE IF NOT EXISTS budgets (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, updated_at INTEGER)`);
+        db.run(`CREATE TABLE IF NOT EXISTS budget_items (id TEXT PRIMARY KEY, budget_id TEXT NOT NULL, concept TEXT NOT NULL, amount REAL NOT NULL, type TEXT NOT NULL, tag TEXT, updated_at INTEGER)`);
+        db.run(`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)`);
+
+        const cfg = DB.getConfig();
+        Object.entries(cfg).forEach(([k, v]) => {
+          db.run(`INSERT OR REPLACE INTO app_config VALUES (?, ?)`, [k, String(v)]);
+        });
+
+        DB.get('cards').forEach(c => {
+          db.run(`INSERT OR REPLACE INTO cards VALUES (?, ?, ?, ?, ?, ?, ?)`, [c.id, c.name, c.credit_limit, c.cutoff_day, c.color || '#1e293b', c.logo_base64 || null, c.updated_at || Date.now()]);
+        });
+
+        DB.get('people').forEach(p => {
+          db.run(`INSERT OR REPLACE INTO people VALUES (?, ?, ?)`, [p.id, p.name, p.updated_at || Date.now()]);
+        });
+
+        DB.get('movements').forEach(m => {
+          db.run(`INSERT OR REPLACE INTO movements VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [m.id, m.concept, m.amount, m.date, m.card_id, m.person_id, m.is_set_aside || 0, m.updated_at || Date.now()]);
+        });
+
+        DB.get('installment_plans').forEach(i => {
+          db.run(`INSERT OR REPLACE INTO installment_plans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [i.id, i.concept, i.total_amount, i.months, i.start_date, i.card_id, i.person_id, i.paid_months || 0, i.updated_at || Date.now()]);
+        });
+
+        DB.get('set_asides').forEach(s => {
+          db.run(`INSERT OR REPLACE INTO set_asides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [s.id, s.card_id, s.person_id, s.movement_id || null, s.amount, s.fund_type || 'Efectivo', s.note || '', s.date, s.updated_at || Date.now()]);
+        });
+
+        DB.get('budgets').forEach(b => {
+          db.run(`INSERT OR REPLACE INTO budgets VALUES (?, ?, ?, ?)`, [b.id, b.name, b.description || '', b.updated_at || Date.now()]);
+        });
+
+        DB.get('budget_items').forEach(bi => {
+          db.run(`INSERT OR REPLACE INTO budget_items VALUES (?, ?, ?, ?, ?, ?, ?)`, [bi.id, bi.budget_id, bi.concept, bi.amount, bi.type, bi.tag, bi.updated_at || Date.now()]);
+        });
+
+        const binary = db.export();
+        db.close();
+        return { isBinaryBlob: true, binaryData: binary };
+      } catch (err) {
+        return { status: 500, error: 'Error exportando base de datos: ' + err.message };
+      }
+    }
+
     return { status: 404, error: 'Ruta no encontrada en motor local' };
   }
 
@@ -609,6 +794,18 @@
 
       try {
         const result = await handleLocalApi(method, url, bodyData);
+
+        if (result && result.isBinaryBlob) {
+          return new Response(new Blob([result.binaryData], { type: 'application/x-sqlite3' }), {
+            status: 200,
+            statusText: 'OK',
+            headers: {
+              'Content-Type': 'application/x-sqlite3',
+              'Content-Disposition': 'attachment; filename="tarjetas.db"'
+            }
+          });
+        }
+
         const status = (result && result.status) ? result.status : 200;
         const responseBlob = new Blob([JSON.stringify(result)], { type: 'application/json' });
         return new Response(responseBlob, {
@@ -637,3 +834,4 @@
 
   console.log('✨ Motor Autónomo Local de CardMaster inicializado con éxito');
 })();
+

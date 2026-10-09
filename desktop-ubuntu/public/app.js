@@ -1230,15 +1230,14 @@ async function saveDatabaseToLocalDevice() {
 }
 
 async function handleRestoreDb(file) {
-  if (!file.name.endsWith('.db') && !file.name.endsWith('.sqlite') && !file.name.endsWith('.sqlite3')) {
+  if (!file) return;
+  const isDb = file.name.endsWith('.db') || file.name.endsWith('.sqlite') || file.name.endsWith('.sqlite3') || file.name.endsWith('.bd');
+  if (!isDb) {
     alert("Por favor selecciona un archivo de base de datos válido (.db o .sqlite)");
     return;
   }
 
-  const confirmMsg = `⚠️ ADVERTENCIA: ¿Deseas reemplazar la base de datos activa con "${file.name}"?\n\nSe creará una copia de seguridad automática de la base de datos previa.`;
-  if (!confirm(confirmMsg)) return;
-
-  showToast("Restaurando base de datos...", "info");
+  showToast(`Cargando y sobreescribiendo con "${file.name}"...`, "info");
   const reader = new FileReader();
   reader.onload = async () => {
     try {
@@ -1250,9 +1249,11 @@ async function handleRestoreDb(file) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al restaurar");
-      showToast("✅ Base de datos restaurada correctamente", "success");
+      showToast("✅ Base de datos sobreescrita con éxito", "success");
       await loadDbInfo();
       refreshAllData();
+      const fileInput = document.getElementById('db-file-input');
+      if (fileInput) fileInput.value = '';
     } catch (err) {
       alert("Error restaurando base de datos: " + err.message);
     }
