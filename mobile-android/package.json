@@ -1,0 +1,14 @@
+{
+  "name": "credit-manager-app",
+  "version": "1.0.0",
+  "description": "Control de tarjetas de credito, gastos, MSI, deudores y apartados con SQLite local",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "sqlite3": "^5.1.7"
+  }
+}

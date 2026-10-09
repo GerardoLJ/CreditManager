@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+tarjetas.db
+tarjetas.db.bak
+*.db
+*.db.bak
+*.db-journal
+Manual_Completo_CardMaster.pdf
+.env
+Dockerfile.test
+scratch
+data
+

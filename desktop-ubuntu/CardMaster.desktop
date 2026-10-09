@@ -1,0 +1,17 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CardMaster
+GenericName=Control Financiero
+Comment=Gestión de Tarjetas de Crédito, MSI, Deudas y Presupuestos
+Exec=/home/personal/Web-Personal/CreditManager/desktop-ubuntu/iniciar-ubuntu.sh
+Icon=/home/personal/Web-Personal/CreditManager/desktop-ubuntu/public/icon-512.png
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=true
+StartupWMClass=CardMaster
+Actions=Stop;
+
+[Desktop Action Stop]
+Name=Detener CardMaster
+Exec=/home/personal/Web-Personal/CreditManager/desktop-ubuntu/detener-ubuntu.sh

@@ -1,0 +1,10 @@
+{
+  "appId": "com.cardmaster.finance",
+  "appName": "CardMaster",
+  "webDir": "public",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
+
