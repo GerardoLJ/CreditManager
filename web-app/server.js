@@ -571,9 +571,27 @@ app.post('/api/set-asides/transfer', (req, res) => {
 
 const HOST = process.env.HOST || '0.0.0.0';
 
+function getLocalIp() {
+  const os = require('os');
+  const nets = os.networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        return net.address;
+      }
+    }
+  }
+  return null;
+}
+
 app.listen(PORT, HOST, () => {
+  const ip = getLocalIp();
   console.log(`=======================================================`);
-  console.log(`🚀 CardMaster Backend listo en: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  console.log(`📁 Base de datos activa en: ${DB_PATH}`);
+  console.log(`🚀 CardMaster Web App iniciado exitosamente!`);
+  console.log(`💻 En esta computadora abre:   http://localhost:${PORT}`);
+  if (ip) {
+    console.log(`📱 En tu iPhone/iPad/otros:   http://${ip}:${PORT}`);
+  }
+  console.log(`📁 Base de datos activa en:    ${DB_PATH}`);
   console.log(`=======================================================`);
 });
