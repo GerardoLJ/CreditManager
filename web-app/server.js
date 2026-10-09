@@ -39,7 +39,7 @@ let db = new sqlite3.Database(DB_PATH, (err) => {
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
 // Inicializar tablas
 function initDbSchema() {

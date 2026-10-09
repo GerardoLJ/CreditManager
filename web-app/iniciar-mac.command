@@ -18,5 +18,6 @@ if command -v node >/dev/null 2>&1; then
 else
     echo "[AVISO] Node.js no está instalado."
     echo "Abriendo CardMaster directamente en tu navegador Safari..."
-    open "public/index.html"
+    open "index.html"
 fi
+

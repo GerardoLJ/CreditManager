@@ -1,60 +1,47 @@
 # 🌐 CardMaster - Versión Web Universal
 
-Bienvenido a la versión **Web Universal** de CardMaster, diseñada para funcionar en **cualquier dispositivo y sistema operativo** (Windows, macOS, iPhone/iPad iOS, tablets y cualquier navegador moderno) **sin necesidad de conocimientos técnicos ni comandos complejos**.
+Bienvenido a la versión **Web Universal** de CardMaster, diseñada para que **cualquier persona, aunque no sepa nada de computadoras ni programación**, pueda usarla al instante sin comandos, sin terminales y **sin necesidad de tener otra computadora encendida**.
 
 ---
 
-## 🚀 ¿Cómo usarlo en tu sistema operativo?
+## 🚀 ¿Cómo usar CardMaster al instante?
 
-### 🪟 En Windows (10 u 11)
-> **¡Solo 1 clic, sin tocar la terminal!**
+### 💻 1. En Cualquier Computadora (Windows, Mac o Linux)
+> **¡Solo haz DOBLE CLIC en `index.html`!**
 
-1. Entra a esta carpeta `web-app`.
-2. Haz doble clic sobre el archivo:  
-   👉 **`iniciar-windows.bat`**
-3. Se abrirá automáticamente tu navegador (Chrome, Edge, etc.) con **CardMaster listo para usarse** en: `http://localhost:3000`.
-4. Cuando termines, simplemente cierra la ventana o haz doble clic en **`detener-windows.bat`**.
-
----
-
-### 🍎 En Mac (macOS)
-> **Doble clic directo desde Finder:**
-
-1. Abre esta carpeta en Finder.
-2. Haz doble clic en el archivo:  
-   👉 **`iniciar-mac.command`**
-3. Se abrirá automáticamente en tu navegador Safari/Chrome.
-4. Para detener la app cuando termines, haz doble clic en **`detener-mac.command`**.
+1. Entra a esta carpeta **`web-app`**.
+2. Haz doble clic directamente sobre el archivo:  
+   👉 **`index.html`**
+3. ¡Listo! Se abrirá automáticamente en tu navegador preferido (Chrome, Edge, Safari, Firefox).
+4. **Tus tarjetas y movimientos ya vienen precargados** y listos para consultar y administrar. Todos los cambios que hagas se guardan automáticamente en tu dispositivo.
 
 ---
 
-### 📱 En iPhone / iPad (iOS) o Tablets
-> **Puedes usarla como una App nativa (PWA) sin instalar nada desde la App Store:**
+### 📱 2. En iPhone / iPad (iOS) o Tablets
+> **¡100% independiente! NO necesitas tener ninguna computadora encendida.**
 
-1. **Abre CardMaster en tu computadora** (Windows, Mac o Ubuntu) estando conectado a la misma red Wi-Fi de tu casa/oficina.
-2. La ventana de tu computadora te mostrará una dirección para celulares (ejemplo: `http://192.168.1.50:3000`).
-3. En tu **iPhone o iPad**, abre **Safari** y escribe esa dirección.
-4. **Instálala como App en tu pantalla de inicio:**
-   - Toca el botón **Compartir** (el cuadrito con la flecha hacia arriba ⬆️ en la parte inferior de Safari).
+1. Abre el navegador **Safari** en tu iPhone o iPad.
+2. Ingresa al enlace web de tu proyecto en GitHub Pages:  
+   👉 **`https://gerardolj.github.io/CreditManager/`**  
+   *(o `https://gerardolj.github.io/CreditManager/web-app/`)*
+3. **Instálala como App en tu pantalla de inicio:**
+   - Toca el botón **Compartir** (el cuadrito con la flecha hacia arriba ⬆️ en Safari).
    - Elige la opción **"Añadir a pantalla de inicio"** (o *"Add to Home Screen"*).
-   - ¡Listo! Tendrás el icono de **CardMaster** en tu pantalla de inicio como cualquier otra aplicación.
+   - Toca en **Añadir**.
+4. ¡Listo! Verás el icono de **CardMaster** en tu pantalla de inicio como cualquier aplicación oficial de iPhone. Abre la app, escribe tu contraseña y podrás usarla en cualquier momento, incluso sin internet.
 
 ---
 
-### 🐧 En otras distribuciones Linux (Fedora, Debian, Arch, etc.)
-1. Haz doble clic o ejecuta el script:  
-   👉 **`./iniciar-linux.sh`**
-2. Se abrirá automáticamente tu navegador predeterminado.
+### 🎛️ 3. Lanzadores Rápidos Opcionales (Si deseas servidor local en tu PC)
+
+Si prefieres ejecutar un servidor local en tu red Wi-Fi:
+* **En Windows:** Doble clic en **`iniciar-windows.bat`** (y para cerrarlo: **`detener-windows.bat`**).
+* **En Mac:** Doble clic en **`iniciar-mac.command`** (y para cerrarlo: **`detener-mac.command`**).
+* **En Linux:** Ejecuta **`./iniciar-linux.sh`** (y para cerrarlo: **`./detener-linux.sh`**).
 
 ---
 
-## 💾 ¿Cómo sincronizar tus datos con tu archivo `tarjetas.db`?
+## 💾 Respaldar y Cargar tu Archivo `tarjetas.db`
 
-Si ya tienes tus tarjetas y compras guardadas en tu archivo `tarjetas.db`:
-
-1. Abre la aplicación web en cualquier dispositivo.
-2. Si te aparece la pantalla de bienvenida con la contraseña, puedes hacer clic en:  
-   **`📂 Cargar / Reemplazar tarjetas.db`**  
-   y seleccionar tu archivo.
-3. O una vez adentro, ve a **Ajustes** ➔ **Base de Datos SQLite** ➔ toca en **"Arrastra tu tarjetas.db o haz clic para elegir"** y selecciona tu archivo.
-4. Todos tus datos se cargarán y sincronizarán en 1 segundo.
+* **Para guardar un respaldo:** Ve a **Ajustes** ➔ **Base de Datos SQLite** ➔ Toca **"Descargar / Guardar DB"**.
+* **Para restaurar tus datos:** En cualquier momento (incluso en la pantalla de bienvenida tocando **`📂 Cargar / Reemplazar tarjetas.db`**), selecciona tu archivo y se cargará en 1 segundo.

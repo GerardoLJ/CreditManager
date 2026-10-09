@@ -14,29 +14,122 @@
     return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
+  // --- FALLBACK CRIPTOGRÁFICO PURO JAVASCRIPT (Garantiza funcionamiento en file:// o navegadores sin HTTPS) ---
+  function sha256_bytes_pure(bytes) {
+    function rightRotate(value, amount) { return (value >>> amount) | (value << (32 - amount)); }
+    const mathPow = Math.pow, maxWord = mathPow(2, 32);
+    const words = [];
+    const bitLength = bytes.length * 8;
+    let hash = [];
+    const k = [];
+    let primeCounter = 0;
+    const isComposite = {};
+    for (let candidate = 2; primeCounter < 64; candidate++) {
+      if (!isComposite[candidate]) {
+        for (let i = 0; i < 313; i += candidate) isComposite[i] = candidate;
+        hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+        k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+      }
+    }
+    const padded = new Uint8Array(Math.ceil((bytes.length + 9) / 64) * 64);
+    padded.set(bytes);
+    padded[bytes.length] = 0x80;
+    const view = new DataView(padded.buffer);
+    view.setUint32(padded.length - 4, bitLength, false);
+    for (let i = 0; i < padded.length; i += 4) words.push(view.getUint32(i, false));
+    for (let j = 0; j < words.length; j += 16) {
+      const w = words.slice(j, j + 16);
+      const oldHash = hash.slice();
+      for (let i = 0; i < 64; i++) {
+        const w15 = w[i - 15], w2 = w[i - 2];
+        const a = hash[0], e = hash[4];
+        const temp1 = (hash[7] + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) + ((e & hash[5]) ^ (~e & hash[6])) + k[i] +
+          (w[i] = i < 16 ? w[i] : (w[i - 16] + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) + w[i - 7] + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) | 0)) | 0;
+        const temp2 = ((rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]))) | 0;
+        hash = [(temp1 + temp2) | 0].concat(hash.slice(0, 7));
+        hash[4] = (hash[4] + temp1) | 0;
+      }
+      for (let i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+    }
+    const result = new Uint8Array(32);
+    const outView = new DataView(result.buffer);
+    for (let i = 0; i < 8; i++) outView.setUint32(i * 4, hash[i], false);
+    return result;
+  }
+
+  function hmac_sha256_pure(key, message) {
+    let k = key;
+    if (k.length > 64) k = sha256_bytes_pure(k);
+    const kPadO = new Uint8Array(64);
+    const kPadI = new Uint8Array(64);
+    for (let i = 0; i < 64; i++) {
+      const b = i < k.length ? k[i] : 0;
+      kPadO[i] = b ^ 0x5c;
+      kPadI[i] = b ^ 0x36;
+    }
+    const innerMsg = new Uint8Array(64 + message.length);
+    innerMsg.set(kPadI);
+    innerMsg.set(message, 64);
+    const innerHash = sha256_bytes_pure(innerMsg);
+    const outerMsg = new Uint8Array(64 + 32);
+    outerMsg.set(kPadO);
+    outerMsg.set(innerHash, 64);
+    return sha256_bytes_pure(outerMsg);
+  }
+
+  function pbkdf2_sync_pure(password, salt, iterations = 100000, keyLen = 32) {
+    const enc = new TextEncoder();
+    const pwdBytes = enc.encode(password);
+    const saltBytes = enc.encode(salt);
+    const numBlocks = Math.ceil(keyLen / 32);
+    const result = new Uint8Array(numBlocks * 32);
+    for (let b = 1; b <= numBlocks; b++) {
+      const initialMsg = new Uint8Array(saltBytes.length + 4);
+      initialMsg.set(saltBytes);
+      initialMsg[saltBytes.length] = (b >>> 24) & 255;
+      initialMsg[saltBytes.length + 1] = (b >>> 16) & 255;
+      initialMsg[saltBytes.length + 2] = (b >>> 8) & 255;
+      initialMsg[saltBytes.length + 3] = b & 255;
+      let u = hmac_sha256_pure(pwdBytes, initialMsg);
+      const block = new Uint8Array(u);
+      for (let i = 1; i < iterations; i++) {
+        u = hmac_sha256_pure(pwdBytes, u);
+        for (let j = 0; j < 32; j++) block[j] ^= u[j];
+      }
+      result.set(block, (b - 1) * 32);
+    }
+    return Array.from(result.subarray(0, keyLen)).map(x => x.toString(16).padStart(2, "0")).join("");
+  }
+
   // PBKDF2 compatible 100% con Node.js (crypto.pbkdf2Sync con salt string)
   async function hashPasswordPbkdf2(password, saltHex) {
-    const enc = new TextEncoder();
-    const keyMaterial = await window.crypto.subtle.importKey(
-      'raw',
-      enc.encode(password),
-      { name: 'PBKDF2' },
-      false,
-      ['deriveBits']
-    );
-    // Sal como bytes UTF-8 (exactamente como lo interpreta crypto.pbkdf2Sync(pwd, salt, ...))
-    const saltBytes = enc.encode(saltHex);
-    const derivedBits = await window.crypto.subtle.deriveBits(
-      {
-        name: 'PBKDF2',
-        salt: saltBytes,
-        iterations: 100000,
-        hash: 'SHA-256'
-      },
-      keyMaterial,
-      256
-    );
-    return Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+    if (window.crypto && window.crypto.subtle) {
+      try {
+        const enc = new TextEncoder();
+        const keyMaterial = await window.crypto.subtle.importKey(
+          'raw',
+          enc.encode(password),
+          { name: 'PBKDF2' },
+          false,
+          ['deriveBits']
+        );
+        const saltBytes = enc.encode(saltHex);
+        const derivedBits = await window.crypto.subtle.deriveBits(
+          {
+            name: 'PBKDF2',
+            salt: saltBytes,
+            iterations: 100000,
+            hash: 'SHA-256'
+          },
+          keyMaterial,
+          256
+        );
+        return Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch (e) {
+        console.warn("Aviso WebCrypto, usando fallback JS:", e);
+      }
+    }
+    return pbkdf2_sync_pure(password, saltHex, 100000, 32);
   }
 
   // Soporte retrocompatible por si alguna versión anterior de mobile guardó sal binaria
@@ -112,11 +205,74 @@
     }
   };
 
-  // Inicializar persona 'Personal' por defecto
+  // Datos iniciales de arranque (Tarjetas, Movimientos y Contraseña Maestra de tarjetas.db)
+  const INITIAL_SEED = {
+    cards: [
+      { id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", name: "Stori", credit_limit: 20000, cutoff_day: 12, color: "#018960", logo_base64: null, updated_at: 1791237307743 },
+      { id: "6ba85b90-79fb-4279-860e-404af524c1dc", name: "BBVA Platinum", credit_limit: 509700, cutoff_day: 16, color: "#77767b", logo_base64: null, updated_at: 1791506629233 },
+      { id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", name: "Banamex Costco", credit_limit: 58000, cutoff_day: 8, color: "#1e293b", logo_base64: null, updated_at: 1791507036454 },
+      { id: "da3bda6f-729c-4f52-8aa7-a15ff51fbb83", name: "Rappi Card", credit_limit: 8000, cutoff_day: 21, color: "#ff7800", logo_base64: null, updated_at: 1791507291751 },
+      { id: "5c35f8fb-3493-494e-bac3-a7d5e03dbbc0", name: "HSBC VIVA", credit_limit: 150000, cutoff_day: 10, color: "#9a9996", logo_base64: null, updated_at: 1791507426384 }
+    ],
+    people: [
+      { id: "fa534717-6cc7-4cd9-8123-4b0049b00734", name: "Personal", updated_at: 1791236901892 },
+      { id: "08e12395-653f-4850-8d64-fe6efb92ef2a", name: "ELH", updated_at: 1791237106177 },
+      { id: "12ad4f8d-e384-429b-a9fa-92ff4afc0afa", name: "BLJ", updated_at: 1791237111899 },
+      { id: "7ce5f9be-0e27-4e88-87a1-3aca98ccd9e8", name: "PLJ", updated_at: 1791237118068 },
+      { id: "5af3a90c-e373-48c1-8636-196d1488b04e", name: "GJG", updated_at: 1791237123102 },
+      { id: "a267b0af-fa28-40c3-83dd-a0ea8059e286", name: "Jess", updated_at: 1791237127642 },
+      { id: "38b9398d-e71e-44d5-8f89-ef2ae71d100c", name: "Gaby", updated_at: 1791237136578 }
+    ],
+    movements: [
+      { id: "8b496f3f-aa29-4408-bfba-f7bb69dbb2bf", concept: "Gatsos", amount: 2900, date: "2026-10-09", card_id: "6ba85b90-79fb-4279-860e-404af524c1dc", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", is_set_aside: 0, updated_at: 1791506679553 },
+      { id: "9c2039f2-113e-4304-8531-ae0173a503b6", concept: "Mexiquense", amount: 2000, date: "2026-10-09", card_id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", person_id: "08e12395-653f-4850-8d64-fe6efb92ef2a", is_set_aside: 0, updated_at: 1791506769589 },
+      { id: "67ce8ee5-243e-4adb-af24-bab50fb0c491", concept: "Mr. Pampas Tijuana", amount: 1331, date: "2026-10-09", card_id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", person_id: "a267b0af-fa28-40c3-83dd-a0ea8059e286", is_set_aside: 0, updated_at: 1791506810071 },
+      { id: "788647dc-e5d3-4b7d-863e-2708c9303ab1", concept: "Personal", amount: 7569, date: "2026-10-09", card_id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", is_set_aside: 0, updated_at: 1791506958270 },
+      { id: "208099b5-d0de-4b2f-acc5-a0c189c1ee6c", concept: "Personal", amount: 6500, date: "2026-10-09", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", is_set_aside: 0, updated_at: 1791507065319 },
+      { id: "d8bfb45e-cfae-4122-a38f-107c10b138aa", concept: "Gastos", amount: 171, date: "2026-10-09", card_id: "da3bda6f-729c-4f52-8aa7-a15ff51fbb83", person_id: "08e12395-653f-4850-8d64-fe6efb92ef2a", is_set_aside: 0, updated_at: 1791507312982 },
+      { id: "0af6d29c-b2a8-4c1e-9935-3d69a975f6eb", concept: "Súper Gaby", amount: 4200, date: "2026-10-09", card_id: "5c35f8fb-3493-494e-bac3-a7d5e03dbbc0", person_id: "08e12395-653f-4850-8d64-fe6efb92ef2a", is_set_aside: 0, updated_at: 1791507482522 },
+      { id: "454c771b-36bf-454c-8e5e-b075972eaa33", concept: "Gasolina", amount: 1312, date: "2026-10-09", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", is_set_aside: 0, updated_at: 1791510093437 }
+    ],
+    installment_plans: [],
+    set_asides: [
+      { id: "6f7c4f47-0fce-479b-9d66-0706eccde15b", card_id: "6ba85b90-79fb-4279-860e-404af524c1dc", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", movement_id: null, amount: 900, note: "Apartado en NU", date: "2026-10-09", updated_at: 1791506731511, fund_type: "Débito" },
+      { id: "70062f7a-aff1-41b6-8cf4-a8a8c1ffa85c", card_id: "914c01d3-fe9f-4b10-b7a4-e4864c3da5c5", person_id: "a267b0af-fa28-40c3-83dd-a0ea8059e286", movement_id: null, amount: 1331, note: "Apartado en NU", date: "2026-10-09", updated_at: 1791506829666, fund_type: "Débito" },
+      { id: "59d17188-fa74-4c53-a2b5-32be85e4f0ce", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", movement_id: null, amount: 2200, note: "Apartado en Banamex Costo Débito", date: "2026-10-09", updated_at: 1791507124715, fund_type: "Débito" },
+      { id: "06039e19-cd0c-46f0-800a-3f6bada60007", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", movement_id: null, amount: 1312, note: "Apartado en NU", date: "2026-10-09", updated_at: 1791510123925, fund_type: "Débito" },
+      { id: "1cf8e60a-d3bb-4071-a037-7efd7dc0968d", card_id: "32e98028-d9c6-4847-b2bf-84153d99bf2c", person_id: "fa534717-6cc7-4cd9-8123-4b0049b00734", movement_id: null, amount: 1223, note: "Apartado en NU", date: "2026-10-09", updated_at: 1791510394557, fund_type: "Débito" }
+    ],
+    budgets: [
+      { id: "cb800f39-0475-4e53-8afd-8f5cb9014ad6", name: "Personal", description: "Gastos Fijos Mensuales", updated_at: 1791238054970 },
+      { id: "e62a5944-1e48-4689-b71f-039399b322b3", name: "ELH", description: "Presupuesto 2", updated_at: 1791238539701 }
+    ],
+    budget_items: [
+      { id: "734f74ce-5a7b-4278-98c4-3e659f4e7fa2", budget_id: "cb800f39-0475-4e53-8afd-8f5cb9014ad6", concept: "UNEFON", amount: 300, type: "Fijo", tag: "Teléfono", updated_at: 1791238135542 },
+      { id: "36d70ca5-3e4d-4acb-b2ee-f070d5968a7a", budget_id: "cb800f39-0475-4e53-8afd-8f5cb9014ad6", concept: "Gasolina", amount: 4000, type: "Fijo", tag: "Automovil", updated_at: 1791238166387 },
+      { id: "a345402a-3730-4c3a-b752-48173de4b379", budget_id: "cb800f39-0475-4e53-8afd-8f5cb9014ad6", concept: "Súper", amount: 5000, type: "Fijo", tag: "Comida", updated_at: 1791238181326 },
+      { id: "15574d87-23b1-443b-8b83-863deec2cecc", budget_id: "e62a5944-1e48-4689-b71f-039399b322b3", concept: "Spotify", amount: 250, type: "Fijo", tag: "Extras", updated_at: 1791238581646 },
+      { id: "f38dd97c-b915-4780-b93e-1f531e280d99", budget_id: "e62a5944-1e48-4689-b71f-039399b322b3", concept: "TotalPlay", amount: 600, type: "Fijo", tag: "Internet", updated_at: 1791238637508 },
+      { id: "bbd90dbb-83cd-4519-8859-f7475e33fa61", budget_id: "e62a5944-1e48-4689-b71f-039399b322b3", concept: "Filtro Agua", amount: 400, type: "Fijo", tag: "Casa", updated_at: 1791238747051 }
+    ],
+    config: {
+      inflation_rate: "10",
+      master_pwd_hash: "b36f250c8d95cde91738c2550611673a48ab194125c365d93ee220e08c14986c",
+      master_pwd_salt: "e65ea99c682d25f2718acfbc9ad11c01"
+    }
+  };
+
+  // Inicializar almacenamiento local con datos listos para usar
   function initDefaults() {
-    const people = DB.get('people');
-    if (!people || people.length === 0) {
-      DB.set('people', [{ id: getUUID(), name: 'Personal', updated_at: Date.now() }]);
+    const isInit = localStorage.getItem('cm_data_initialized');
+    if (!isInit) {
+      DB.set('cards', INITIAL_SEED.cards);
+      DB.set('people', INITIAL_SEED.people);
+      DB.set('movements', INITIAL_SEED.movements);
+      DB.set('installment_plans', INITIAL_SEED.installment_plans);
+      DB.set('set_asides', INITIAL_SEED.set_asides);
+      DB.set('budgets', INITIAL_SEED.budgets);
+      DB.set('budget_items', INITIAL_SEED.budget_items);
+      DB.setConfig(INITIAL_SEED.config);
+      localStorage.setItem('cm_data_initialized', '1');
     }
   }
   initDefaults();

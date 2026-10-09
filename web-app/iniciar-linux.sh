@@ -17,5 +17,6 @@ if command -v node >/dev/null 2>&1; then
     node server.js
 else
     echo "Abriendo directamente en tu navegador..."
-    xdg-open "$DIR/public/index.html" 2>/dev/null || sensible-browser "$DIR/public/index.html" 2>/dev/null || true
+    xdg-open "$DIR/index.html" 2>/dev/null || sensible-browser "$DIR/index.html" 2>/dev/null || true
 fi
+

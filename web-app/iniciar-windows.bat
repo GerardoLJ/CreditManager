@@ -17,7 +17,7 @@ if %errorlevel% neq 0 (
     echo en modo autónomo con almacenamiento local...
     echo.
     timeout /t 2 > nul
-    start "" "public\index.html"
+    start "" "index.html"
     pause
     exit /b 0
 )
@@ -35,3 +35,4 @@ echo ====================================================================
 timeout /t 1 > nul
 start "" "http://localhost:3000"
 node server.js
+

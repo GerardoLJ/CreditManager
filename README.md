@@ -34,11 +34,12 @@ CreditManager/
 │   └── README.md          # Tutorial detallado para Android
 │
 └── 🌐 web-app/             ➔ Para Windows, macOS, iOS (iPhone/iPad) y navegadores web
-    ├── iniciar-windows.bat # Doble clic para iniciar en Windows (sin comandos)
+    ├── index.html         # ¡DOBLE CLIC para usar al instante sin instalar nada!
+    ├── app.js             # Lógica completa de tarjetas, MSI y apartados
+    ├── local-engine.js    # Motor autónomo con datos precargados
+    ├── iniciar-windows.bat # Doble clic para iniciar en Windows con servidor local
     ├── iniciar-mac.command # Doble clic para iniciar en macOS
-    ├── iniciar-linux.sh   # Inicio rápido para otras distros Linux
     ├── tarjetas.db        # Base de datos física SQLite
-    ├── public/            # PWA instalable en iPhone/iPad y navegadores
     └── README.md          # Guía visual para no programadores
 ```
 
@@ -79,14 +80,13 @@ Diseñado para usar directamente en tu teléfono móvil con **1 toque y sin term
 
 ### 🌐 3. `web-app/` — Para Windows, macOS, iPhone/iPad y otros
 
-Diseñado para que cualquier persona que **no sea programador** pueda utilizar CardMaster en otros sistemas operativos:
+Diseñado para que cualquier persona que **no sea programador** pueda utilizar CardMaster sin depender de una PC encendida:
 
-* **🪟 En Windows (10 u 11):**  
-  Entra a la carpeta `web-app` y haz **doble clic en `iniciar-windows.bat`**. Se abrirá tu navegador listo en `http://localhost:3000`.
-* **🍎 En Mac (macOS):**  
-  Entra a la carpeta `web-app` y haz **doble clic en `iniciar-mac.command`**.
+* **💻 En Cualquier Computadora (Windows, Mac o Linux):**  
+  Solo entra a la carpeta `web-app` y haz **doble clic en `index.html`**. ¡Se abre directamente en tu navegador con todas tus tarjetas listas para usar sin tocar ninguna terminal ni instalar nada!
 * **📱 En iPhone / iPad (iOS):**  
-  Abre la dirección que te indique tu computadora en **Safari**, pulsa el botón **Compartir** (⬆️) y selecciona **"Añadir a pantalla de inicio"** para usarla como aplicación nativa PWA.
+  ¡Funciona de forma **100% independiente sin tener tu PC encendida**! Solo abre tu navegador Safari con el enlace de GitHub Pages (`https://gerardolj.github.io/CreditManager/`), pulsa **Compartir (⬆️)** ➔ **"Añadir a pantalla de inicio"** y tendrás la App instalada en tu iPhone.
+* **🎛️ Servidor Local Opcional:** Si deseas ejecutarlo con servidor en red local, haz doble clic en `iniciar-windows.bat` (Windows) o `iniciar-mac.command` (Mac).
 
 ---
 

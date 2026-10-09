@@ -1772,10 +1772,10 @@ function showToast(msg, type = "normal") {
   setTimeout(() => toast.remove(), 3500);
 }
 
-// --- SOPORTE PWA / INSTALACIÓN NATIVA EN ANDROID ---
-if ('serviceWorker' in navigator) {
+// --- SOPORTE PWA / INSTALACIÓN NATIVA EN NAVEGADORES (iOS / Android / Desktop) ---
+if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').catch(err => {
+    navigator.serviceWorker.register('./service-worker.js').catch(err => {
       console.warn("ServiceWorker:", err);
     });
   });
