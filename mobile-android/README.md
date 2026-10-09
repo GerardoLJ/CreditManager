@@ -92,22 +92,70 @@ pkg install nodejs git -y
 ```
 * **¿Qué hace esto?** `git` sirve para descargar el código del proyecto, y `nodejs` es el motor que hace funcionar CardMaster.
 
-#### 3. Descargar el proyecto de GitHub a tu teléfono
-Escribe y da Enter:
+#### 3. Elegir cómo tener el proyecto en tu teléfono:
+
+Tienes dos formas: **Opción A (Recomendada)** descargando directamente desde GitHub, o **Opción B** si ya descargaste la carpeta a la memoria de tu celular.
+
+---
+
+##### 🔹 Opción A: Descargar automáticamente de GitHub (La más limpia y recomendada)
+Simplemente escribe:
 ```bash
 git clone https://github.com/GerardoLJ/CreditManager.git
-```
-*Se descargará una copia limpia del proyecto en la memoria de tu celular.*
-
-#### 4. Entrar a la carpeta e instalar los paquetes
-Escribe estos dos comandos en orden:
-```bash
 cd CreditManager/mobile-android
 npm install
 ```
-*Esperar unos segundos a que termine de descargar los paquetes internos de la app.*
 
-#### 5. ¡Encender CardMaster en tu teléfono!
+---
+
+##### 🔹 Opción B: Si ya descargaste o descomprimiste la carpeta en tu celular (ej. `Web personal`)
+
+Si ya tienes la carpeta en tu teléfono en la ruta:  
+`/storage/emulated/0/Web personal/CreditManager-main/mobile-android`
+
+> [!IMPORTANT]
+> **¿Por qué la terminal no te deja entrar directamente?**  
+> Hay dos razones muy comunes:
+> 1. **Permiso de Almacenamiento:** Por seguridad, Termux no puede ver tus archivos hasta que le des permiso.
+> 2. **El espacio en "Web personal":** En la terminal, si escribes un espacio sin comillas, la terminal se confunde y cree que son dos carpetas distintas.
+
+Sigue estos 3 pasos exactos en Termux:
+
+**Paso 1: Darle permiso a Termux para ver tus archivos:**
+Escribe en Termux:
+```bash
+termux-setup-storage
+```
+Aparecerá una ventana en tu celular diciendo: *"¿Permitir a Termux acceder a fotos y archivos?"*. Presiona **"Permitir"**.
+
+**Paso 2 (Recomendado): Copiar el proyecto a la memoria interna de Termux:**
+> [!TIP]
+> En Android moderno, ejecutar comandos de Node.js directamente dentro de la memoria compartida (`/storage/emulated/0`) puede causar errores de permisos (*"permission denied"* o problemas con SQLite).  
+> Por eso, lo mejor y más seguro es copiarlo a la memoria privada de Termux con este comando:
+
+```bash
+cp -r "/storage/emulated/0/Web personal/CreditManager-main" ~/
+```
+*(Fíjate en las comillas dobles `" "` al principio y al final del texto; son obligatorias para que no falle con el espacio de `Web personal`)*.
+
+Una vez copiado, entra a la carpeta e instala los paquetes:
+```bash
+cd ~/CreditManager-main/mobile-android
+npm install
+```
+
+---
+
+**¿Y si quieres entrar directamente a tu carpeta sin copiarla?**  
+Si prefieres entrar directamente a tu carpeta original en el almacenamiento compartido, **debes usar comillas obligatoriamente**:
+```bash
+cd "/storage/emulated/0/Web personal/CreditManager-main/mobile-android"
+npm install
+```
+
+---
+
+#### 4. ¡Encender CardMaster en tu teléfono!
 Escribe:
 ```bash
 node server.js
@@ -152,22 +200,27 @@ No necesitas repetir toda la instalación todos los días. Tu rutina diaria es u
 
 #### Para encenderlo al día siguiente:
 1. Abre Termux.
-2. Escribe solamente esto y presiona Enter:
-   ```bash
-   cd CreditManager/mobile-android && node server.js
-   ```
+2. Escribe el comando según la carpeta que usaste:
+   - Si lo descargaste de GitHub:
+     ```bash
+     cd ~/CreditManager/mobile-android && node server.js
+     ```
+   - Si lo copiaste desde tu celular (`CreditManager-main`):
+     ```bash
+     cd ~/CreditManager-main/mobile-android && node server.js
+     ```
+   - Si lo tienes directamente en tu almacenamiento compartido:
+     ```bash
+     cd "/storage/emulated/0/Web personal/CreditManager-main/mobile-android" && node server.js
+     ```
 3. Sal al menú de tu teléfono y toca el icono de **CardMaster**. ¡Tus datos estarán listos para registrar gastos!
 
 #### 💡 Truco Pro: Encenderlo con una sola palabra (`iniciar`)
-Si quieres hacer tu vida aún más fácil, ejecuta este comando en Termux **una sola vez**:
+Para no tener que escribir rutas largas, ejecuta en Termux este comando una sola vez (ajustado a tu carpeta `CreditManager-main`):
 ```bash
-echo "alias iniciar='cd ~/CreditManager/mobile-android && node server.js'" >> ~/.bashrc && source ~/.bashrc
+echo "alias iniciar='cd ~/CreditManager-main/mobile-android 2>/dev/null || cd ~/CreditManager/mobile-android 2>/dev/null || cd \"/storage/emulated/0/Web personal/CreditManager-main/mobile-android\"; node server.js'" >> ~/.bashrc && source ~/.bashrc
 ```
-A partir de ahora, cada vez que abras Termux, solo escribe la palabra:
-```bash
-iniciar
-```
-...y presiona Enter. ¡CardMaster se encenderá de inmediato!
+A partir de ahora, cada vez que abras Termux, ¡solo escribe la palabra **`iniciar`** y presiona Enter! CardMaster buscará tu carpeta y se encenderá de inmediato.
 
 ---
 
