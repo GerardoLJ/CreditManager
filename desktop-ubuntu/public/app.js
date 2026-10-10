@@ -2389,7 +2389,7 @@ async function handleChooseStorageFile() {
       body: JSON.stringify({ dbBase64: result.base64 })
     });
     if (res.ok) {
-      showToast(`✅ Base de datos "${result.fileName}" cargada con éxito`, "success");
+      showToast(`✅ Base de datos "${result.fileName}" vinculada y cargada con éxito`, "success", 4000);
       await checkAuthStatus();
       refreshAllData();
       await loadDbInfo();
@@ -2460,6 +2460,10 @@ async function initPhysicalStorage() {
 }
 
 async function selectAndLoadDbFile() {
+  if (isAndroidNative()) {
+    return await handleChooseStorageFile();
+  }
+
   if (window.showOpenFilePicker) {
     try {
       const [handle] = await window.showOpenFilePicker({
@@ -2482,7 +2486,7 @@ async function selectAndLoadDbFile() {
     }
   }
 
-  // Fallback para Android o navegadores estándar
+  // Fallback para navegadores estándar
   const authInput = document.getElementById('auth-db-file-input');
   const regularInput = document.getElementById('db-file-input');
   const targetInput = (authInput && !authInput.closest('.hidden')) ? authInput : (regularInput || authInput);
@@ -2498,6 +2502,16 @@ async function saveDatabaseToLocalDevice() {
 
     // 1. Android Nativo (Capacitor)
     if (isAndroidNative()) {
+      const isConfigured = typeof window.AndroidNativeStorage.isStorageConfigured === 'function'
+        ? window.AndroidNativeStorage.isStorageConfigured()
+        : false;
+
+      // Si aún no hay archivo ni carpeta configurados, guiar al usuario para elegir dónde guardarlo
+      if (!isConfigured) {
+        showToast("Selecciona dónde deseas guardar tu base de datos...", "info");
+        return await handleSaveAsAndroid();
+      }
+
       // Convertir blob a base64 limpio
       const reader = new FileReader();
       const b64 = await new Promise((resolve, reject) => {
@@ -2514,7 +2528,7 @@ async function saveDatabaseToLocalDevice() {
         throw new Error(savedPath.replace('ERROR: ', ''));
       }
 
-      showToast(`✅ ¡Base de datos guardada y sobrescrita con éxito! Ubicación: ${savedPath || 'Descargas/tarjetas.db'}`, "success", 5000);
+      showToast(`✅ ¡Base de datos guardada y sobrescrita con éxito! (${savedPath || 'tarjetas.db'})`, "success", 5000);
       await loadDbInfo();
       await updateStorageDisplay();
       return;
@@ -2574,7 +2588,7 @@ async function saveDatabaseToLocalDevice() {
 
 async function handleSaveAsAndroid() {
   try {
-    showToast("Preparando guardado en carpeta...", "info");
+    showToast("Elige la carpeta o ubicación en tu teléfono donde guardar tarjetas.db...", "info");
     const res = await fetch('/api/database/download');
     if (!res.ok) throw new Error("No se pudo obtener la base de datos actual desde memoria");
     const blob = await res.blob();
@@ -2586,14 +2600,14 @@ async function handleSaveAsAndroid() {
     });
 
     if (isAndroidNative() && typeof window.AndroidNativeStorage.saveFileAs === 'function') {
-      window.onAndroidFileSaved = function(result) {
+      window.onAndroidFileSaved = async function(result) {
         if (typeof result === 'string') {
           try { result = JSON.parse(result); } catch(e) {}
         }
         if (result && result.success) {
-          showToast(`✅ Base de datos guardada con éxito en: "${result.fileName || 'tarjetas.db'}"`, "success", 5000);
-          loadDbInfo();
-          updateStorageDisplay();
+          showToast(`✅ Base de datos guardada y vinculada en: "${result.fileName || 'tarjetas.db'}"`, "success", 5000);
+          await loadDbInfo();
+          await updateStorageDisplay();
         } else if (result && result.cancelled) {
           showToast("Guardado cancelado", "info");
         } else {
@@ -2819,6 +2833,11 @@ function setupEventListeners() {
   const btnSettingsSaveAs = document.getElementById('btn-settings-save-as');
   if (btnSettingsSaveAs) {
     btnSettingsSaveAs.addEventListener('click', handleSaveAsAndroid);
+  }
+
+  const btnSettingsLinkExisting = document.getElementById('btn-settings-link-existing');
+  if (btnSettingsLinkExisting) {
+    btnSettingsLinkExisting.addEventListener('click', handleChooseStorageFile);
   }
 
   document.querySelectorAll('[data-close]').forEach(b => {
