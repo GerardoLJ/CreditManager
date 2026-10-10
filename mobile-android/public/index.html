@@ -106,11 +106,16 @@
         <button type="submit" id="btn-auth-submit" class="btn btn-primary btn-block">Desbloquear</button>
 
         <div class="auth-extra-actions" style="margin-top: 16px; text-align: center;">
-          <button type="button" id="btn-auth-restore-db" class="btn btn-link btn-sm" style="color: var(--primary); text-decoration: underline; background: none; border: none; font-size: 0.88rem; cursor: pointer; padding: 6px;">
-            📂 Cargar / Reemplazar tarjetas.db
+          <button type="button" id="btn-auth-change-folder" class="btn btn-link btn-sm" style="color: #60a5fa; text-decoration: underline; background: none; border: none; font-size: 0.88rem; cursor: pointer; padding: 4px; display: inline-flex; align-items: center; gap: 4px;">
+            <span>📁 Carpeta en teléfono:</span> <strong id="auth-folder-name-display">Elegir carpeta...</strong>
           </button>
-          <input type="file" id="auth-db-file-input" accept=".db,.sqlite,.sqlite3,.bd" class="file-input-hidden">
-          <div style="margin-top: 6px;">
+          <div style="margin-top: 4px;">
+            <button type="button" id="btn-auth-restore-db" class="btn btn-link btn-sm" style="color: var(--primary); text-decoration: underline; background: none; border: none; font-size: 0.84rem; cursor: pointer; padding: 4px;">
+              📂 Cargar / Reemplazar tarjetas.db
+            </button>
+            <input type="file" id="auth-db-file-input" accept=".db,.sqlite,.sqlite3,.bd" class="file-input-hidden">
+          </div>
+          <div style="margin-top: 4px;">
             <button type="button" id="btn-auth-factory-reset" class="btn btn-link btn-sm hidden" style="color: #ef4444; font-size: 0.82rem; cursor: pointer; padding: 4px; background: none; border: none; text-decoration: underline;">
               ⚠️ Restaurar de Fábrica
             </button>
@@ -439,6 +444,9 @@
             </div>
 
             <div class="action-buttons-col">
+              <button type="button" id="btn-settings-change-folder" class="btn btn-secondary btn-block" style="margin-bottom: 8px;">
+                📁 Cambiar Carpeta de Guardado (Teléfono)
+              </button>
               <button id="btn-save-db-local" class="btn btn-primary btn-block">
                 💾 Guardar / Elegir Carpeta para Guardar DB
               </button>
@@ -940,6 +948,47 @@
           <button type="submit" class="btn btn-primary">Realizar Traspaso</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: ASISTENTE DE PRIMER INICIO / UBICACIÓN DE BASE DE DATOS (ANDROID / LOCAL) -->
+  <div id="modal-storage-setup" class="modal hidden">
+    <div class="modal-content" style="max-width: 480px; text-align: center;">
+      <div class="modal-header" style="justify-content: center; border-bottom: none; padding-bottom: 0; position: relative;">
+        <button type="button" class="modal-close" data-close="modal-storage-setup" style="position: absolute; right: 0; top: 0; font-size: 1.5rem; line-height: 1; padding: 4px 8px;">&times;</button>
+        <div style="font-size: 3rem; margin-bottom: 8px;">📂</div>
+      </div>
+      <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 1.3rem;">¿Dónde deseas guardar tus datos?</h3>
+      <p class="small text-muted" style="margin-bottom: 20px; line-height: 1.5; font-size: 0.92rem;">
+        Para asegurar que tus datos <strong>nunca se borren</strong> al actualizar la aplicación, elige una carpeta permanente en tu teléfono (por ejemplo en <em>Documentos</em> o <em>Descargas</em>).
+      </p>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+        <button type="button" id="btn-pick-storage-folder" class="btn btn-primary" style="padding: 14px 16px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600;">
+          <span>📁</span>
+          <span>Elegir Carpeta Permanente (Recomendado)</span>
+        </button>
+        <p class="small text-muted" style="margin: 0; font-size: 0.8rem;">
+          Se creará o usará <code>tarjetas.db</code> en la carpeta elegida. Si ya tenías datos allí, se cargarán automáticamente.
+        </p>
+
+        <div style="display: flex; align-items: center; gap: 10px; margin: 4px 0;">
+          <hr style="flex: 1; border: 0; border-top: 1px solid var(--border-color, #334155);">
+          <span style="font-size: 0.78rem; color: #94a3b8; text-transform: uppercase;">Otras Opciones</span>
+          <hr style="flex: 1; border: 0; border-top: 1px solid var(--border-color, #334155);">
+        </div>
+
+        <button type="button" id="btn-pick-storage-file" class="btn btn-secondary" style="padding: 10px 14px; font-size: 0.92rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
+          <span>📄</span>
+          <span>Seleccionar archivo tarjetas.db existente</span>
+        </button>
+
+        <button type="button" id="btn-use-default-storage" class="btn btn-link btn-sm" style="color: #94a3b8; text-decoration: underline; background: none; border: none; font-size: 0.82rem; margin-top: 6px; cursor: pointer;">
+          Continuar con almacenamiento predeterminado de la app
+        </button>
+      </div>
+
+      <div id="storage-setup-status" class="alert-info hidden" style="font-size: 0.88rem; margin-top: 10px; text-align: left;"></div>
     </div>
   </div>
 

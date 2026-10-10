@@ -1001,7 +1001,22 @@
     if (path === '/api/database/info') {
       let activePath = 'Base de datos privada del dispositivo';
       let statusDesc = 'Almacenamiento Local (Memoria del Teléfono)';
-      if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.getDbFilePath === 'function') {
+      let hasDb = true;
+      if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.getStorageInfo === 'function') {
+        try {
+          const sInfo = JSON.parse(window.AndroidNativeStorage.getStorageInfo());
+          if (sInfo.folderName) {
+            activePath = '📁 ' + sInfo.folderName + '/tarjetas.db';
+            statusDesc = 'Carpeta externa (' + sInfo.folderName + ')';
+          } else if (sInfo.pathDisplay) {
+            activePath = sInfo.pathDisplay;
+            statusDesc = 'Almacenamiento Android';
+          }
+          hasDb = sInfo.hasDb !== undefined ? sInfo.hasDb : true;
+        } catch (e) {
+          activePath = window.AndroidNativeStorage.getDbFilePath('tarjetas.db') || activePath;
+        }
+      } else if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.getDbFilePath === 'function') {
         activePath = window.AndroidNativeStorage.getDbFilePath('tarjetas.db') || activePath;
         statusDesc = 'Disco Físico Android (tarjetas.db)';
       } else if (window.activeDbFileHandle && window.activeDbFileHandle.name) {
@@ -1009,7 +1024,7 @@
         statusDesc = 'Disco Local Vinculado';
       }
       return {
-        exists: true,
+        exists: hasDb,
         sizeFormatted: statusDesc,
         dbPath: activePath,
         isDocker: false

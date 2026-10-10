@@ -324,6 +324,7 @@ async function checkAuthStatus() {
       document.getElementById('btn-auth-submit').textContent = "Desbloquear";
       if (btnAuthFactory) btnAuthFactory.classList.remove('hidden');
     }
+    await updateStorageDisplay();
   } catch (err) {
     updateServerUI(false);
     console.warn("No se pudo conectar al servidor:", err);
@@ -1881,24 +1882,215 @@ async function getStoredDbHandle() {
   });
 }
 
+// --- ALMACENAMIENTO PERMANENTE EN ANDROID Y SAF ---
+function isAndroidNative() {
+  return Boolean(window.AndroidNativeStorage && typeof window.AndroidNativeStorage.pickFolder === 'function');
+}
+
+function pickAndroidFolder() {
+  return new Promise((resolve) => {
+    window.onAndroidFolderPicked = function(data) {
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch(e) {}
+      }
+      resolve(data || { success: false, cancelled: true });
+    };
+    try {
+      window.AndroidNativeStorage.pickFolder();
+    } catch (e) {
+      resolve({ success: false, error: e.message });
+    }
+  });
+}
+
+function pickAndroidFile() {
+  return new Promise((resolve) => {
+    window.onAndroidFilePicked = function(data) {
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch(e) {}
+      }
+      resolve(data || { success: false, cancelled: true });
+    };
+    try {
+      window.AndroidNativeStorage.pickFile();
+    } catch (e) {
+      resolve({ success: false, error: e.message });
+    }
+  });
+}
+
+async function updateStorageDisplay() {
+  const authDisplay = document.getElementById('auth-folder-name-display');
+  const pathEl = document.getElementById('db-active-path');
+  const sizeEl = document.getElementById('db-active-size');
+
+  if (isAndroidNative()) {
+    try {
+      let info = null;
+      if (typeof window.AndroidNativeStorage.getStorageInfo === 'function') {
+        const infoStr = window.AndroidNativeStorage.getStorageInfo();
+        info = typeof infoStr === 'string' ? JSON.parse(infoStr) : infoStr;
+      }
+      if (info) {
+        if (authDisplay) {
+          authDisplay.textContent = info.folderName ? info.folderName : (info.configured ? 'Carpeta interna' : 'Elegir carpeta...');
+        }
+        if (pathEl) {
+          pathEl.textContent = info.folderName ? `📁 ${info.folderName}/tarjetas.db` : (info.pathDisplay || 'Almacenamiento Android');
+        }
+        if (sizeEl) {
+          sizeEl.textContent = info.hasDb ? 'Conectado (tarjetas.db presente)' : 'Listo para guardar';
+        }
+      }
+    } catch (e) {
+      console.warn("Aviso en updateStorageDisplay:", e);
+    }
+  } else {
+    if (window.activeDbFileHandle && window.activeDbFileHandle.name) {
+      if (authDisplay) authDisplay.textContent = window.activeDbFileHandle.name;
+      if (pathEl) pathEl.textContent = `📁 ${window.activeDbFileHandle.name}`;
+      if (sizeEl) sizeEl.textContent = 'Archivo físico vinculado';
+    } else {
+      if (authDisplay) authDisplay.textContent = 'Almacenamiento Local';
+    }
+  }
+}
+
+function openStorageSetupModal() {
+  const modal = document.getElementById('modal-storage-setup');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeStorageSetupModal() {
+  const modal = document.getElementById('modal-storage-setup');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function handleChooseStorageFolder() {
+  if (isAndroidNative()) {
+    showToast("Selecciona la carpeta donde guardarás tarjetas.db...", "info");
+    const result = await pickAndroidFolder();
+    if (result.cancelled) {
+      showToast("Selección cancelada", "info");
+      return;
+    }
+    if (!result.success) {
+      showToast(result.error || "No se pudo acceder a la carpeta", "error");
+      return;
+    }
+
+    closeStorageSetupModal();
+    await updateStorageDisplay();
+
+    if (result.hasExistingDb) {
+      showToast(`📂 ¡Base de datos encontrada en "${result.folderName}"! Cargando datos...`, "success");
+      const b64 = window.AndroidNativeStorage.loadDbFile('tarjetas.db');
+      if (b64 && b64.length > 20) {
+        const res = await fetch('/api/database/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dbBase64: b64 })
+        });
+        if (res.ok) {
+          showToast(`✅ Datos restaurados exitosamente desde ${result.folderName}`, "success");
+          await checkAuthStatus();
+          refreshAllData();
+        }
+      }
+    } else {
+      await syncPhysicalDbFile();
+      showToast(`✅ Carpeta vinculada: "${result.folderName}". Todos tus cambios se guardarán aquí automáticamente.`, "success");
+    }
+    await loadDbInfo();
+  } else {
+    closeStorageSetupModal();
+    await saveDatabaseToLocalDevice();
+    await updateStorageDisplay();
+  }
+}
+
+async function handleChooseStorageFile() {
+  if (isAndroidNative()) {
+    showToast("Selecciona tu archivo de base de datos...", "info");
+    const result = await pickAndroidFile();
+    if (result.cancelled) {
+      showToast("Selección cancelada", "info");
+      return;
+    }
+    if (!result.success || !result.base64) {
+      showToast(result.error || "No se pudo leer el archivo seleccionado", "error");
+      return;
+    }
+
+    closeStorageSetupModal();
+    showToast(`Cargando base de datos "${result.fileName}"...`, "info");
+
+    try {
+      if (typeof window.AndroidNativeStorage.saveDbFile === 'function') {
+        window.AndroidNativeStorage.saveDbFile(result.base64, 'tarjetas.db');
+      }
+    } catch(e) {}
+
+    const res = await fetch('/api/database/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dbBase64: result.base64 })
+    });
+    if (res.ok) {
+      showToast(`✅ Base de datos "${result.fileName}" cargada con éxito`, "success");
+      await checkAuthStatus();
+      refreshAllData();
+      await loadDbInfo();
+      await updateStorageDisplay();
+    } else {
+      showToast("Error restaurando la base de datos", "error");
+    }
+  } else {
+    closeStorageSetupModal();
+    await selectAndLoadDbFile();
+    await updateStorageDisplay();
+  }
+}
+
+function handleUseDefaultStorage() {
+  if (isAndroidNative()) {
+    window.AndroidNativeStorage.setDefaultStorageChosen(true);
+    showToast("Almacenamiento predeterminado configurado.", "info");
+  }
+  closeStorageSetupModal();
+  updateStorageDisplay();
+  loadDbInfo();
+}
+
 async function initPhysicalStorage() {
   // 1. Android Native Storage (Capacitor)
-  if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.hasDbFile === 'function') {
+  if (isAndroidNative()) {
     try {
-      if (window.AndroidNativeStorage.hasDbFile('tarjetas.db')) {
-        const b64 = window.AndroidNativeStorage.loadDbFile('tarjetas.db');
-        if (b64 && b64.length > 20) {
-          console.log("📱 Auto-cargando base de datos persistente desde Android...");
-          await fetch('/api/database/restore', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ dbBase64: b64 })
-          });
+      const isConfigured = typeof window.AndroidNativeStorage.isStorageConfigured === 'function'
+        ? window.AndroidNativeStorage.isStorageConfigured()
+        : true;
+
+      if (!isConfigured) {
+        // Primer inicio en Android: Mostrar asistente para seleccionar dónde guardar
+        console.log("📱 Primer inicio en Android: abriendo asistente de almacenamiento...");
+        openStorageSetupModal();
+      } else {
+        if (window.AndroidNativeStorage.hasDbFile('tarjetas.db')) {
+          const b64 = window.AndroidNativeStorage.loadDbFile('tarjetas.db');
+          if (b64 && b64.length > 20) {
+            console.log("📱 Auto-cargando base de datos persistente desde Android...");
+            await fetch('/api/database/restore', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dbBase64: b64 })
+            });
+          }
         }
       }
     } catch (e) {
       console.warn("Aviso auto-cargando tarjetas.db en Android:", e);
     }
+    await updateStorageDisplay();
   }
 
   // 2. Reconectar handle de archivo de escritorio si existe en IndexedDB
@@ -1911,6 +2103,8 @@ async function initPhysicalStorage() {
       }
     }
   } catch (e) {}
+
+  await updateStorageDisplay();
 }
 
 async function selectAndLoadDbFile() {
@@ -2361,6 +2555,32 @@ function setupEventListeners() {
   const formPayBank = document.getElementById('form-pay-bank');
   if (formPayBank) {
     formPayBank.addEventListener('submit', handlePayBankSubmit);
+  }
+
+  // Configuración de Almacenamiento (Carpeta Android / Archivos Físicos)
+  const btnPickStorageFolder = document.getElementById('btn-pick-storage-folder');
+  if (btnPickStorageFolder) {
+    btnPickStorageFolder.addEventListener('click', handleChooseStorageFolder);
+  }
+
+  const btnPickStorageFile = document.getElementById('btn-pick-storage-file');
+  if (btnPickStorageFile) {
+    btnPickStorageFile.addEventListener('click', handleChooseStorageFile);
+  }
+
+  const btnUseDefaultStorage = document.getElementById('btn-use-default-storage');
+  if (btnUseDefaultStorage) {
+    btnUseDefaultStorage.addEventListener('click', handleUseDefaultStorage);
+  }
+
+  const btnAuthChangeFolder = document.getElementById('btn-auth-change-folder');
+  if (btnAuthChangeFolder) {
+    btnAuthChangeFolder.addEventListener('click', openStorageSetupModal);
+  }
+
+  const btnSettingsChangeFolder = document.getElementById('btn-settings-change-folder');
+  if (btnSettingsChangeFolder) {
+    btnSettingsChangeFolder.addEventListener('click', openStorageSetupModal);
   }
 }
 
