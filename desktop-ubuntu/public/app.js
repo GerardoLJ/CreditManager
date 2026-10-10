@@ -125,7 +125,8 @@ async function handleTransferSubmit(e) {
     if (!res.ok) throw new Error(data.error);
 
     document.getElementById('modal-transfer-fund').classList.add('hidden');
-    refreshAllData();
+    await refreshAllData();
+    await syncPhysicalDbFile();
     showToast(`Traspaso de $${data.transferred} realizado (${data.from} ➔ ${data.to})`, "success");
   } catch (err) {
     showToast(err.message || "Error al realizar traspaso", "error");
@@ -792,6 +793,11 @@ async function renderSetAsides() {
     return !isFullyPaid && s.amount > 0;
   });
 
+  const countBadge = document.getElementById('setasides-count-badge');
+  if (countBadge) {
+    countBadge.textContent = `${activeSetAsides.length} apartado${activeSetAsides.length === 1 ? '' : 's'} activo${activeSetAsides.length === 1 ? '' : 's'}`;
+  }
+
   if (!activeSetAsides.length) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Aún no tienes apartados registrados</td></tr>`;
     return;
@@ -800,6 +806,7 @@ async function renderSetAsides() {
   activeSetAsides.forEach(s => {
     const isDebit = s.fund_type === 'Débito' || s.fund_type === 'Debito';
     const paidAmt = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
+    const isFullyPaid = s.status === 'pagado' || (paidAmt >= s.amount && s.amount > 0);
     const isPartialPaid = s.status === 'pago_parcial' || (paidAmt > 0 && paidAmt < s.amount);
     
     let statusBadge = '';
@@ -1085,6 +1092,7 @@ async function handleSaveSetAside(e) {
 
     document.getElementById('modal-setaside').classList.add('hidden');
     await refreshAllData();
+    await syncPhysicalDbFile();
   } catch (err) {
     showToast(err.message || "Error al guardar apartado", "error");
   }
