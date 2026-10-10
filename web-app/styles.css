@@ -1040,6 +1040,60 @@ button:hover,
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.2s ease;
+}
+
+.cards-debt-summary-header:hover {
+  opacity: 0.92;
+}
+
+.cards-debt-toggle-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--primary-color);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.cards-debt-toggle-bar:hover {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+[data-theme="light"] .cards-debt-toggle-bar {
+  background: rgba(37, 99, 235, 0.06);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+.cards-debt-toggle-bar .toggle-icon {
+  font-size: 0.75rem;
+  transition: transform 0.25s ease;
+}
+
+.cards-debt-collapsible {
+  overflow: hidden;
+  transition: max-height 0.35s ease, opacity 0.25s ease;
+  max-height: 1500px;
+  opacity: 1;
+}
+
+.cards-debt-collapsible.collapsed {
+  max-height: 0;
+  opacity: 0;
+  display: none;
 }
 
 .cards-debt-main {

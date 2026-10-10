@@ -540,7 +540,7 @@ async function renderCards() {
   if (summaryBox) {
     summaryBox.innerHTML = `
       <div class="cards-debt-summary-card">
-        <div class="cards-debt-summary-header">
+        <div class="cards-debt-summary-header" onclick="toggleCardsDebtBreakdown()" title="Toca para ver u ocultar el desglose de deudas por tarjeta">
           <div class="cards-debt-main">
             <span class="cards-debt-label">💳 Deuda Total General (Todas las tarjetas)</span>
             <span class="cards-debt-val">$${globalTotalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
@@ -563,43 +563,50 @@ async function renderCards() {
           </div>
         </div>
 
-        <div class="cards-debt-divider"></div>
-
-        <div class="cards-debt-breakdown-header">
-          <span class="breakdown-title">📊 Desglose de Deuda por Tarjeta:</span>
-          <span class="breakdown-hint">${cardsCalculated.length} ${cardsCalculated.length === 1 ? 'tarjeta' : 'tarjetas'}</span>
+        <div class="cards-debt-toggle-bar" onclick="toggleCardsDebtBreakdown()">
+          <span id="cards-debt-toggle-text">📊 Ver Desglose por Tarjeta (${cardsCalculated.length})</span>
+          <span id="cards-debt-toggle-icon" class="toggle-icon">▼</span>
         </div>
 
-        <div class="cards-debt-breakdown-grid">
-          ${cardsCalculated.map(item => `
-            <div class="debt-breakdown-card-item" onclick="scrollToCard('${item.card.id}')" title="Ubicar ${escapeHtml(item.card.name)}">
-              <div class="breakdown-card-top">
-                <div class="breakdown-card-identity">
-                  <span class="card-color-dot" style="background-color: ${item.card.color || '#3b82f6'};"></span>
-                  <span class="breakdown-card-name">${escapeHtml(item.card.name)}</span>
-                </div>
-                <span class="breakdown-status-badge ${item.statusClass}">
-                  ${item.statusText}
-                </span>
-              </div>
-              <div class="breakdown-card-body">
-                <div class="breakdown-debt-row">
-                  <span class="breakdown-debt-label">Debe al banco:</span>
-                  <span class="breakdown-debt-value ${item.totalDebt > 0 ? 'has-debt' : 'no-debt'}">
-                    $${item.totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+        <div id="cards-debt-collapsible" class="cards-debt-collapsible collapsed">
+          <div class="cards-debt-divider"></div>
+
+          <div class="cards-debt-breakdown-header">
+            <span class="breakdown-title">📊 Desglose de Deuda por Tarjeta:</span>
+            <span class="breakdown-hint">${cardsCalculated.length} ${cardsCalculated.length === 1 ? 'tarjeta' : 'tarjetas'}</span>
+          </div>
+
+          <div class="cards-debt-breakdown-grid">
+            ${cardsCalculated.map(item => `
+              <div class="debt-breakdown-card-item" onclick="scrollToCard('${item.card.id}')" title="Ubicar ${escapeHtml(item.card.name)}">
+                <div class="breakdown-card-top">
+                  <div class="breakdown-card-identity">
+                    <span class="card-color-dot" style="background-color: ${item.card.color || '#3b82f6'};"></span>
+                    <span class="breakdown-card-name">${escapeHtml(item.card.name)}</span>
+                  </div>
+                  <span class="breakdown-status-badge ${item.statusClass}">
+                    ${item.statusText}
                   </span>
                 </div>
-                ${item.totalDebt > 0 ? `
-                  <div class="breakdown-extra-row">
-                    <span>Apartado: <strong>$${item.cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
-                    <span style="color: ${item.missingToSetAside > 0 ? '#f59e0b' : '#10b981'}; font-weight:600;">
-                      ${item.missingToSetAside > 0 ? `Falta: $${item.missingToSetAside.toLocaleString('es-MX', {minimumFractionDigits: 2})}` : '100% Cubierto'}
+                <div class="breakdown-card-body">
+                  <div class="breakdown-debt-row">
+                    <span class="breakdown-debt-label">Debe al banco:</span>
+                    <span class="breakdown-debt-value ${item.totalDebt > 0 ? 'has-debt' : 'no-debt'}">
+                      $${item.totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}
                     </span>
                   </div>
-                ` : ''}
+                  ${item.totalDebt > 0 ? `
+                    <div class="breakdown-extra-row">
+                      <span>Apartado: <strong>$${item.cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
+                      <span style="color: ${item.missingToSetAside > 0 ? '#f59e0b' : '#10b981'}; font-weight:600;">
+                        ${item.missingToSetAside > 0 ? `Falta: $${item.missingToSetAside.toLocaleString('es-MX', {minimumFractionDigits: 2})}` : '100% Cubierto'}
+                      </span>
+                    </div>
+                  ` : ''}
+                </div>
               </div>
-            </div>
-          `).join('')}
+            `).join('')}
+          </div>
         </div>
       </div>
     `;
@@ -695,6 +702,26 @@ function scrollToCard(cardId) {
   }
 }
 window.scrollToCard = scrollToCard;
+
+function toggleCardsDebtBreakdown() {
+  const el = document.getElementById('cards-debt-collapsible');
+  const txt = document.getElementById('cards-debt-toggle-text');
+  const icon = document.getElementById('cards-debt-toggle-icon');
+  if (!el) return;
+
+  const isCollapsed = el.classList.contains('collapsed');
+  if (isCollapsed) {
+    el.classList.remove('collapsed');
+    if (txt) txt.textContent = "📊 Ocultar Desglose por Tarjeta";
+    if (icon) icon.textContent = "▲";
+  } else {
+    el.classList.add('collapsed');
+    const count = el.querySelectorAll('.debt-breakdown-card-item').length;
+    if (txt) txt.textContent = `📊 Ver Desglose por Tarjeta (${count})`;
+    if (icon) icon.textContent = "▼";
+  }
+}
+window.toggleCardsDebtBreakdown = toggleCardsDebtBreakdown;
 
 function setupCardDragAndDrop() {
   const container = document.getElementById('cards-grid');
@@ -2471,20 +2498,6 @@ async function saveDatabaseToLocalDevice() {
 
     // 1. Android Nativo (Capacitor)
     if (isAndroidNative()) {
-      let isConfigured = false;
-      if (typeof window.AndroidNativeStorage.isStorageConfigured === 'function') {
-        isConfigured = window.AndroidNativeStorage.isStorageConfigured();
-      }
-
-      if (!isConfigured) {
-        showToast("Selecciona la carpeta en tu teléfono donde guardar tarjetas.db...", "info");
-        const pickRes = await pickAndroidFolder();
-        if (pickRes.cancelled) {
-          showToast("Guardado cancelado", "info");
-          return;
-        }
-      }
-
       // Convertir blob a base64 limpio
       const reader = new FileReader();
       const b64 = await new Promise((resolve, reject) => {
@@ -2501,7 +2514,7 @@ async function saveDatabaseToLocalDevice() {
         throw new Error(savedPath.replace('ERROR: ', ''));
       }
 
-      showToast(`✅ Base de datos sobrescrita y guardada con éxito en tu teléfono (${savedPath || 'tarjetas.db'})`, "success");
+      showToast(`✅ ¡Base de datos guardada y sobrescrita con éxito! Ubicación: ${savedPath || 'Descargas/tarjetas.db'}`, "success", 5000);
       await loadDbInfo();
       await updateStorageDisplay();
       return;
@@ -2558,6 +2571,46 @@ async function saveDatabaseToLocalDevice() {
     alert("Error al guardar base de datos: " + err.message);
   }
 }
+
+async function handleSaveAsAndroid() {
+  try {
+    showToast("Preparando guardado en carpeta...", "info");
+    const res = await fetch('/api/database/download');
+    if (!res.ok) throw new Error("No se pudo obtener la base de datos actual desde memoria");
+    const blob = await res.blob();
+    const reader = new FileReader();
+    const b64 = await new Promise((resolve, reject) => {
+      reader.onloadend = () => resolve(reader.result.replace(/^data:.*?;base64,/, ''));
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    if (isAndroidNative() && typeof window.AndroidNativeStorage.saveFileAs === 'function') {
+      window.onAndroidFileSaved = function(result) {
+        if (typeof result === 'string') {
+          try { result = JSON.parse(result); } catch(e) {}
+        }
+        if (result && result.success) {
+          showToast(`✅ Base de datos guardada con éxito en: "${result.fileName || 'tarjetas.db'}"`, "success", 5000);
+          loadDbInfo();
+          updateStorageDisplay();
+        } else if (result && result.cancelled) {
+          showToast("Guardado cancelado", "info");
+        } else {
+          showToast("Error al guardar: " + (result ? result.error : "desconocido"), "error");
+        }
+      };
+      window.AndroidNativeStorage.saveFileAs(b64, 'tarjetas.db');
+      return;
+    }
+
+    // Si no es Android o no tiene saveFileAs, usar saveDatabaseToLocalDevice
+    await saveDatabaseToLocalDevice();
+  } catch (err) {
+    alert("Error al guardar como: " + err.message);
+  }
+}
+window.handleSaveAsAndroid = handleSaveAsAndroid;
 
 async function handleRestoreDb(file) {
   if (!file) return;
@@ -2761,6 +2814,11 @@ function setupEventListeners() {
   const btnSaveDb = document.getElementById('btn-save-db-local');
   if (btnSaveDb) {
     btnSaveDb.addEventListener('click', saveDatabaseToLocalDevice);
+  }
+
+  const btnSettingsSaveAs = document.getElementById('btn-settings-save-as');
+  if (btnSettingsSaveAs) {
+    btnSettingsSaveAs.addEventListener('click', handleSaveAsAndroid);
   }
 
   document.querySelectorAll('[data-close]').forEach(b => {

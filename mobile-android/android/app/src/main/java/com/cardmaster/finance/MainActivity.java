@@ -1,11 +1,15 @@
 package com.cardmaster.finance;
 
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import androidx.documentfile.provider.DocumentFile;
@@ -21,6 +25,9 @@ public class MainActivity extends BridgeActivity {
 
     private static final int REQUEST_CODE_PICK_FOLDER = 9901;
     private static final int REQUEST_CODE_PICK_FILE = 9902;
+    private static final int REQUEST_CODE_SAVE_FILE_AS = 9903;
+
+    private byte[] pendingSaveBytes = null;
 
     private String escapeJson(String s) {
         if (s == null) return "";
@@ -98,14 +105,43 @@ public class MainActivity extends BridgeActivity {
             boolean configured = isStorageConfigured();
             boolean hasDb = hasDbFile("tarjetas.db");
             long sizeBytes = getDbFileSize("tarjetas.db");
-            String display = !name.isEmpty() ? name : (defaultChosen ? "Carpeta privada de la app" : "Sin configurar");
-            return "{\"configured\":" + configured + ",\"folderName\":\"" + escapeJson(name) + "\",\"pathDisplay\":\"" + escapeJson(display) + "\",\"hasDb\":" + hasDb + ",\"sizeBytes\":" + sizeBytes + "}";
+
+            String folderDisplay = name;
+            if (folderDisplay.isEmpty()) {
+                folderDisplay = "Descargas";
+            }
+            String display = !name.isEmpty() ? name : "Descargas (Almacenamiento del Teléfono)";
+            if (hasDb && !configured) {
+                configured = true;
+            }
+            return "{\"configured\":" + configured + ",\"folderName\":\"" + escapeJson(folderDisplay) + "\",\"pathDisplay\":\"" + escapeJson(display) + "\",\"hasDb\":" + hasDb + ",\"sizeBytes\":" + sizeBytes + "}";
         }
 
         @JavascriptInterface
         public void resetStorageLocation() {
             SharedPreferences prefs = context.getSharedPreferences("CardMasterStorage", Context.MODE_PRIVATE);
             prefs.edit().remove("selected_tree_uri").remove("selected_folder_name").remove("default_storage_chosen").apply();
+        }
+
+        @JavascriptInterface
+        public void saveFileAs(String base64Data, String filename) {
+            try {
+                String cleanBase64 = base64Data != null ? base64Data.replaceFirst("^data:.*?;base64,", "").trim() : "";
+                pendingSaveBytes = Base64.decode(cleanBase64, Base64.DEFAULT);
+
+                Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("application/x-sqlite3");
+                intent.putExtra(Intent.EXTRA_TITLE, filename != null && !filename.isEmpty() ? filename : "tarjetas.db");
+                MainActivity.this.startActivityForResult(intent, REQUEST_CODE_SAVE_FILE_AS);
+            } catch (Exception e) {
+                final String errJson = "{\"success\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}";
+                runOnUiThread(() -> {
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        getBridge().getWebView().evaluateJavascript("if (window.onAndroidFileSaved) window.onAndroidFileSaved(" + errJson + ");", null);
+                    }
+                });
+            }
         }
 
         @JavascriptInterface
@@ -140,24 +176,63 @@ public class MainActivity extends BridgeActivity {
                                     os.write(bytes);
                                     os.flush();
                                     os.close();
-                                    savedPath = prefs.getString("selected_folder_name", "Carpeta") + "/" + filename;
+                                    savedPath = "📁 " + prefs.getString("selected_folder_name", "Carpeta") + "/" + filename;
                                 }
                             }
                         }
                     } catch (Exception treeErr) {
-                        // Continuar a copia de seguridad local
+                        // Continuar a copia pública
                     }
                 }
 
-                // 2. Guardar también siempre una copia local de respaldo
-                File fallbackFile = new File(context.getExternalFilesDir(null), filename);
-                FileOutputStream fos = new FileOutputStream(fallbackFile);
-                fos.write(bytes);
-                fos.close();
-
-                if (savedPath.isEmpty()) {
-                    savedPath = fallbackFile.getAbsolutePath();
+                // 2. Guardar SIEMPRE en la carpeta pública Descargas (Downloads) del teléfono
+                try {
+                    File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    if (downloadsDir != null) {
+                        if (!downloadsDir.exists()) downloadsDir.mkdirs();
+                        File pubFile = new File(downloadsDir, filename);
+                        FileOutputStream pubFos = new FileOutputStream(pubFile);
+                        pubFos.write(bytes);
+                        pubFos.flush();
+                        pubFos.close();
+                        if (savedPath.isEmpty()) {
+                            savedPath = "📁 Descargas/" + filename;
+                        }
+                    }
+                } catch (Exception pubErr) {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            ContentValues cv = new ContentValues();
+                            cv.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
+                            cv.put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream");
+                            cv.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                            Uri pubUri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                            if (pubUri != null) {
+                                OutputStream pubOs = context.getContentResolver().openOutputStream(pubUri, "wt");
+                                if (pubOs != null) {
+                                    pubOs.write(bytes);
+                                    pubOs.flush();
+                                    pubOs.close();
+                                    if (savedPath.isEmpty()) {
+                                        savedPath = "📁 Descargas/" + filename;
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Exception ignored) {}
                 }
+
+                // 3. Guardar SIEMPRE una copia de respaldo en almacenamiento de la app
+                try {
+                    File fallbackFile = new File(context.getExternalFilesDir(null), filename);
+                    FileOutputStream fos = new FileOutputStream(fallbackFile);
+                    fos.write(bytes);
+                    fos.flush();
+                    fos.close();
+                    if (savedPath.isEmpty()) {
+                        savedPath = fallbackFile.getAbsolutePath();
+                    }
+                } catch (Exception ignored) {}
 
                 return savedPath;
             } catch (Exception e) {
@@ -194,11 +269,24 @@ public class MainActivity extends BridgeActivity {
                             }
                         }
                     } catch (Exception treeErr) {
-                        // Continuar a copia de respaldo
+                        // Continuar
                     }
                 }
 
-                // 2. Fallback: cargar desde getExternalFilesDir
+                // 2. Cargar desde la carpeta pública Descargas
+                try {
+                    File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    File pubFile = new File(downloadsDir, filename);
+                    if (pubFile.exists() && pubFile.length() > 0) {
+                        FileInputStream fis = new FileInputStream(pubFile);
+                        byte[] bytes = new byte[(int) pubFile.length()];
+                        fis.read(bytes);
+                        fis.close();
+                        return Base64.encodeToString(bytes, Base64.NO_WRAP);
+                    }
+                } catch (Exception ignored) {}
+
+                // 3. Fallback: cargar desde getExternalFilesDir
                 File fallbackFile = new File(context.getExternalFilesDir(null), filename);
                 if (fallbackFile.exists() && fallbackFile.length() > 0) {
                     FileInputStream fis = new FileInputStream(fallbackFile);
@@ -221,6 +309,10 @@ public class MainActivity extends BridgeActivity {
             if (!folderName.isEmpty()) {
                 return folderName + "/" + filename;
             }
+            File pubFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), filename);
+            if (pubFile.exists()) {
+                return "Descargas/" + filename;
+            }
             File file = new File(context.getExternalFilesDir(null), filename);
             return file.exists() ? file.getAbsolutePath() : new File(context.getExternalFilesDir(null), filename).getAbsolutePath();
         }
@@ -241,6 +333,10 @@ public class MainActivity extends BridgeActivity {
                     }
                 } catch (Exception e) {}
             }
+            File pubFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), filename);
+            if (pubFile.exists() && pubFile.length() > 0) {
+                return true;
+            }
             File file = new File(context.getExternalFilesDir(null), filename);
             return file.exists() && file.length() > 0;
         }
@@ -260,6 +356,10 @@ public class MainActivity extends BridgeActivity {
                         }
                     }
                 } catch (Exception e) {}
+            }
+            File pubFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), filename);
+            if (pubFile.exists() && pubFile.isFile()) {
+                return pubFile.length();
             }
             File file = new File(context.getExternalFilesDir(null), filename);
             return (file.exists() && file.isFile()) ? file.length() : 0;
@@ -295,8 +395,10 @@ public class MainActivity extends BridgeActivity {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
                 Uri treeUri = data.getData();
                 try {
-                    final int takeFlags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                    getContentResolver().takePersistableUriPermission(treeUri, takeFlags);
+                    try {
+                        final int takeFlags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                        getContentResolver().takePersistableUriPermission(treeUri, takeFlags);
+                    } catch (Exception ignoredPerm) {}
 
                     DocumentFile pickedDir = DocumentFile.fromTreeUri(this, treeUri);
                     String folderName = pickedDir != null && pickedDir.getName() != null ? pickedDir.getName() : "Carpeta seleccionada";
@@ -381,6 +483,43 @@ public class MainActivity extends BridgeActivity {
                 runOnUiThread(() -> {
                     if (getBridge() != null && getBridge().getWebView() != null) {
                         getBridge().getWebView().evaluateJavascript("if (window.onAndroidFilePicked) window.onAndroidFilePicked({\"success\":false,\"cancelled\":true});", null);
+                    }
+                });
+            }
+        } else if (requestCode == REQUEST_CODE_SAVE_FILE_AS) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null && pendingSaveBytes != null) {
+                Uri destUri = data.getData();
+                try {
+                    OutputStream os = getContentResolver().openOutputStream(destUri, "wt");
+                    if (os != null) {
+                        os.write(pendingSaveBytes);
+                        os.flush();
+                        os.close();
+                    }
+                    DocumentFile doc = DocumentFile.fromSingleUri(this, destUri);
+                    String name = doc != null && doc.getName() != null ? doc.getName() : "tarjetas.db";
+
+                    final String resJson = "{\"success\":true,\"fileName\":\"" + escapeJson(name) + "\"}";
+                    runOnUiThread(() -> {
+                        if (getBridge() != null && getBridge().getWebView() != null) {
+                            getBridge().getWebView().evaluateJavascript("if (window.onAndroidFileSaved) window.onAndroidFileSaved(" + resJson + ");", null);
+                        }
+                    });
+                } catch (Exception e) {
+                    final String errJson = "{\"success\":false,\"error\":\"" + escapeJson(e.getMessage()) + "\"}";
+                    runOnUiThread(() -> {
+                        if (getBridge() != null && getBridge().getWebView() != null) {
+                            getBridge().getWebView().evaluateJavascript("if (window.onAndroidFileSaved) window.onAndroidFileSaved(" + errJson + ");", null);
+                        }
+                    });
+                } finally {
+                    pendingSaveBytes = null;
+                }
+            } else {
+                pendingSaveBytes = null;
+                runOnUiThread(() -> {
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        getBridge().getWebView().evaluateJavascript("if (window.onAndroidFileSaved) window.onAndroidFileSaved({\"success\":false,\"cancelled\":true});", null);
                     }
                 });
             }
