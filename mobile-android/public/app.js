@@ -793,15 +793,22 @@ async function handleSaveCard(e) {
   const cutoff_day = parseInt(document.getElementById('card-cutoff-day').value);
   const color = document.getElementById('card-color').value;
 
-  await fetch('/api/cards', {
+  const res = await fetch('/api/cards', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, name, credit_limit, cutoff_day, color, logo_base64: currentCardLogoBase64 })
   });
 
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    showToast(err.error || "Error al guardar tarjeta", "error");
+    return;
+  }
+
   document.getElementById('modal-card').classList.add('hidden');
-  refreshAllData();
-  showToast("Tarjeta guardada en tarjetas.db", "success");
+  await refreshAllData();
+  await syncPhysicalDbFile();
+  showToast("Tarjeta guardada en base de datos", "success");
 }
 
 async function editCard(cardId) {
@@ -845,7 +852,8 @@ async function handleConfirmDeleteCard(e) {
     if (!res.ok) throw new Error(data.error);
 
     document.getElementById('modal-delete-card').classList.add('hidden');
-    refreshAllData();
+    await refreshAllData();
+    await syncPhysicalDbFile();
     showToast("Tarjeta eliminada con éxito", "success");
   } catch (err) {
     errDiv.textContent = err.message || "Error al eliminar";
@@ -1390,13 +1398,16 @@ async function handleSaveMovement(e) {
   }
 
   document.getElementById('modal-movement').classList.add('hidden');
-  refreshAllData();
+  await refreshAllData();
+  await syncPhysicalDbFile();
 }
 
 async function deleteMovement(id) {
+  if (!confirm("¿Eliminar este gasto?")) return;
   await fetch(`/api/movements/${id}`, { method: 'DELETE' });
-  refreshAllData();
-  showToast("Movimiento eliminado");
+  await refreshAllData();
+  await syncPhysicalDbFile();
+  showToast("Movimiento eliminado", "info");
 }
 
 // --- DEUDORES (RECONCILIACIÓN DE APARTADOS) ---
@@ -1496,7 +1507,8 @@ async function deletePerson(pId) {
   const res = await fetch(`/api/people/${pId}`, { method: 'DELETE' });
   const data = await res.json();
   if (!res.ok) alert(data.error);
-  refreshAllData();
+  await refreshAllData();
+  await syncPhysicalDbFile();
 }
 
 // --- CALENDARIO Y AGENDA ---
@@ -2363,35 +2375,39 @@ async function handleChooseStorageFolder() {
 
 async function handleChooseStorageFile() {
   if (isAndroidNative()) {
-    showToast("Selecciona tu archivo de base de datos...", "info");
+    showToast("Selecciona tu archivo tarjetas.db...", "info");
     const result = await pickAndroidFile();
     if (result.cancelled) {
       showToast("Selección cancelada", "info");
       return;
     }
-    if (!result.success || !result.base64) {
-      showToast(result.error || "No se pudo leer el archivo seleccionado", "error");
+    if (!result.success) {
+      showToast(result.error || "No se pudo acceder al archivo seleccionado", "error");
       return;
     }
 
     closeStorageSetupModal();
-    showToast(`Cargando base de datos "${result.fileName}"...`, "info");
+    const fileName = result.fileName || 'tarjetas.db';
+    showToast(`Cargando base de datos "${fileName}"...`, "info");
 
-    try {
-      if (typeof window.AndroidNativeStorage.saveDbFile === 'function') {
-        window.AndroidNativeStorage.saveDbFile(result.base64, 'tarjetas.db');
-      }
-    } catch(e) {}
+    const b64 = typeof window.AndroidNativeStorage.loadDbFile === 'function'
+      ? window.AndroidNativeStorage.loadDbFile('tarjetas.db')
+      : null;
+
+    if (!b64 || b64.length < 20) {
+      showToast("El archivo seleccionado está vacío o no es legible", "error");
+      return;
+    }
 
     const res = await fetch('/api/database/restore', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dbBase64: result.base64 })
+      body: JSON.stringify({ dbBase64: b64 })
     });
     if (res.ok) {
-      showToast(`✅ Base de datos "${result.fileName}" vinculada y cargada con éxito`, "success", 4000);
+      showToast(`✅ Base de datos "${fileName}" vinculada y cargada con éxito`, "success", 4000);
       await checkAuthStatus();
-      refreshAllData();
+      await refreshAllData();
       await loadDbInfo();
       await updateStorageDisplay();
     } else {
@@ -2524,8 +2540,13 @@ async function saveDatabaseToLocalDevice() {
       });
 
       const savedPath = window.AndroidNativeStorage.saveDbFile(b64, 'tarjetas.db');
+      if (savedPath === 'ERROR:NEED_SAVE_AS') {
+        showToast("Selecciona la ubicación en tu teléfono para vincular y guardar tarjetas.db...", "info");
+        return await handleSaveAsAndroid();
+      }
       if (savedPath && savedPath.startsWith('ERROR:')) {
-        throw new Error(savedPath.replace('ERROR: ', ''));
+        showToast("Aviso: " + savedPath.replace('ERROR: ', '') + ". Selecciona dónde guardar...", "info");
+        return await handleSaveAsAndroid();
       }
 
       showToast(`✅ ¡Base de datos guardada y sobrescrita con éxito! (${savedPath || 'tarjetas.db'})`, "success", 5000);
@@ -2840,6 +2861,11 @@ function setupEventListeners() {
     btnSettingsLinkExisting.addEventListener('click', handleChooseStorageFile);
   }
 
+  const btnSettingsLinkFolder = document.getElementById('btn-settings-link-folder');
+  if (btnSettingsLinkFolder) {
+    btnSettingsLinkFolder.addEventListener('click', handleChooseStorageFolder);
+  }
+
   document.querySelectorAll('[data-close]').forEach(b => {
     b.addEventListener('click', () => document.getElementById(b.dataset.close).classList.add('hidden'));
   });
@@ -2890,7 +2916,8 @@ function setupEventListeners() {
       body: JSON.stringify({ name: document.getElementById('person-name').value })
     });
     document.getElementById('modal-person').classList.add('hidden');
-    refreshAllData();
+    await refreshAllData();
+    await syncPhysicalDbFile();
   });
 
   document.getElementById('btn-new-budget').addEventListener('click', () => {
@@ -2905,7 +2932,8 @@ function setupEventListeners() {
       body: JSON.stringify({ name: document.getElementById('budget-name').value, description: document.getElementById('budget-desc').value })
     });
     document.getElementById('modal-budget').classList.add('hidden');
-    refreshAllData();
+    await refreshAllData();
+    await syncPhysicalDbFile();
   });
 
   document.getElementById('form-budget-item').addEventListener('submit', async (e) => {
@@ -2922,7 +2950,8 @@ function setupEventListeners() {
       })
     });
     document.getElementById('modal-budget-item').classList.add('hidden');
-    refreshAllData();
+    await refreshAllData();
+    await syncPhysicalDbFile();
   });
 
   document.getElementById('btn-open-reset-modal').addEventListener('click', () => {
@@ -3047,12 +3076,14 @@ function openBudgetItemModal(bId) {
 async function deleteBudget(bId) {
   if (!confirm("¿Eliminar presupuesto?")) return;
   await fetch(`/api/budgets/${bId}`, { method: 'DELETE' });
-  refreshAllData();
+  await refreshAllData();
+  await syncPhysicalDbFile();
 }
 
 async function deleteBudgetItem(id) {
   await fetch(`/api/budget-items/${id}`, { method: 'DELETE' });
-  refreshAllData();
+  await refreshAllData();
+  await syncPhysicalDbFile();
 }
 
 function setupDragAndDrop() {
@@ -3121,10 +3152,34 @@ function setupDragAndDrop() {
 }
 
 function processLogo(file) {
+  if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    currentCardLogoBase64 = reader.result;
-    updateLogoPreview(reader.result);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const maxDim = 256;
+      let width = img.width;
+      let height = img.height;
+      if (width > height) {
+        if (width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        }
+      } else {
+        if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      currentCardLogoBase64 = canvas.toDataURL('image/png', 0.85);
+      updateLogoPreview(currentCardLogoBase64);
+    };
+    img.src = reader.result;
   };
   reader.readAsDataURL(file);
 }

@@ -173,12 +173,24 @@ public class MainActivity extends BridgeActivity {
             try {
                 String cleanBase64 = base64Data != null ? base64Data.replaceFirst("^data:.*?;base64,", "").trim() : "";
                 byte[] bytes = Base64.decode(cleanBase64, Base64.DEFAULT);
+                if (bytes == null || bytes.length == 0) {
+                    return "ERROR: Datos vacíos";
+                }
+
+                // 1. SIEMPRE guardar en almacenamiento interno de la app como respaldo permanente
+                try {
+                    File internalFile = new File(context.getExternalFilesDir(null), filename);
+                    FileOutputStream fos = new FileOutputStream(internalFile);
+                    fos.write(bytes);
+                    fos.flush();
+                    fos.close();
+                } catch (Exception ignored) {}
 
                 SharedPreferences prefs = context.getSharedPreferences("CardMasterStorage", Context.MODE_PRIVATE);
                 String fileUriStr = prefs.getString("selected_file_uri", null);
                 String treeUriStr = prefs.getString("selected_tree_uri", null);
 
-                // 1. Prioridad: Guardar en el ARCHIVO específico seleccionado o guardado previamente por el usuario vía SAF
+                // 2. Guardar en el ARCHIVO físico vinculado
                 if (fileUriStr != null && !fileUriStr.isEmpty()) {
                     try {
                         Uri fileUri = Uri.parse(fileUriStr);
@@ -196,11 +208,11 @@ public class MainActivity extends BridgeActivity {
                             return "📄 " + fileName;
                         }
                     } catch (Exception fileErr) {
-                        // Si el archivo ya no es accesible vía este URI, continuar a siguiente método
+                        // Permiso denegado o archivo no accesible
                     }
                 }
 
-                // 2. Prioridad: Guardar en la CARPETA física seleccionada por el usuario vía SAF
+                // 3. Guardar en la CARPETA física vinculada
                 if (treeUriStr != null && !treeUriStr.isEmpty()) {
                     try {
                         Uri treeUri = Uri.parse(treeUriStr);
@@ -225,18 +237,11 @@ public class MainActivity extends BridgeActivity {
                                 }
                             }
                         }
-                    } catch (Exception treeErr) {
-                        // Continuar a respaldo interno
-                    }
+                    } catch (Exception treeErr) {}
                 }
 
-                // 3. Respaldo interno en almacenamiento privado de la app (getExternalFilesDir)
-                File fallbackFile = new File(context.getExternalFilesDir(null), filename);
-                FileOutputStream fos = new FileOutputStream(fallbackFile);
-                fos.write(bytes);
-                fos.flush();
-                fos.close();
-                return "💾 " + fallbackFile.getName() + " (Almacenamiento interno)";
+                // Si no había ubicación vinculada o falló el permiso del archivo vinculado
+                return "ERROR:NEED_SAVE_AS";
             } catch (Exception e) {
                 return "ERROR: " + e.getMessage();
             }
@@ -249,7 +254,7 @@ public class MainActivity extends BridgeActivity {
                 String fileUriStr = prefs.getString("selected_file_uri", null);
                 String treeUriStr = prefs.getString("selected_tree_uri", null);
 
-                // 1. Cargar desde el archivo físico vinculado directamente vía SAF
+                // 1. Cargar desde el archivo físico vinculado
                 if (fileUriStr != null && !fileUriStr.isEmpty()) {
                     try {
                         Uri fileUri = Uri.parse(fileUriStr);
@@ -268,7 +273,7 @@ public class MainActivity extends BridgeActivity {
                     } catch (Exception fileErr) {}
                 }
 
-                // 2. Cargar desde la carpeta física elegida por el usuario vía SAF
+                // 2. Cargar desde la carpeta física vinculada
                 if (treeUriStr != null && !treeUriStr.isEmpty()) {
                     try {
                         Uri treeUri = Uri.parse(treeUriStr);
@@ -293,7 +298,7 @@ public class MainActivity extends BridgeActivity {
                     } catch (Exception treeErr) {}
                 }
 
-                // 3. Fallback: cargar desde almacenamiento privado de la app
+                // 3. Fallback: cargar desde almacenamiento interno de la app
                 File fallbackFile = new File(context.getExternalFilesDir(null), filename);
                 if (fallbackFile.exists() && fallbackFile.length() > 0) {
                     FileInputStream fis = new FileInputStream(fallbackFile);
@@ -418,13 +423,17 @@ public class MainActivity extends BridgeActivity {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
                 Uri treeUri = data.getData();
                 try {
-                    int takeFlags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                    if (takeFlags == 0) {
-                        takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                    int flags = data.getFlags();
+                    int takeFlags = flags & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    if (takeFlags != 0) {
+                        try {
+                            getContentResolver().takePersistableUriPermission(treeUri, takeFlags);
+                        } catch (Exception e1) {
+                            try {
+                                getContentResolver().takePersistableUriPermission(treeUri, Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                            } catch (Exception ignoredPerm) {}
+                        }
                     }
-                    try {
-                        getContentResolver().takePersistableUriPermission(treeUri, takeFlags);
-                    } catch (Exception ignoredPerm) {}
 
                     DocumentFile pickedDir = DocumentFile.fromTreeUri(this, treeUri);
                     String folderName = pickedDir != null && pickedDir.getName() != null ? pickedDir.getName() : "Carpeta seleccionada";
@@ -471,13 +480,17 @@ public class MainActivity extends BridgeActivity {
             if (resultCode == RESULT_OK && data != null && data.getData() != null) {
                 Uri fileUri = data.getData();
                 try {
-                    int takeFlags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                    if (takeFlags == 0) {
-                        takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                    int flags = data.getFlags();
+                    int takeFlags = flags & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    if (takeFlags != 0) {
+                        try {
+                            getContentResolver().takePersistableUriPermission(fileUri, takeFlags);
+                        } catch (SecurityException se1) {
+                            try {
+                                getContentResolver().takePersistableUriPermission(fileUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                            } catch (Exception ignored) {}
+                        }
                     }
-                    try {
-                        getContentResolver().takePersistableUriPermission(fileUri, takeFlags);
-                    } catch (Exception ignoredPerm) {}
 
                     InputStream is = getContentResolver().openInputStream(fileUri);
                     if (is != null) {
@@ -491,7 +504,15 @@ public class MainActivity extends BridgeActivity {
                         byte[] allBytes = buffer.toByteArray();
                         is.close();
 
-                        String base64 = Base64.encodeToString(allBytes, Base64.NO_WRAP);
+                        // Guardar siempre copia interna garantizada en almacenamiento de la app
+                        try {
+                            File internalFile = new File(getExternalFilesDir(null), "tarjetas.db");
+                            FileOutputStream fos = new FileOutputStream(internalFile);
+                            fos.write(allBytes);
+                            fos.flush();
+                            fos.close();
+                        } catch (Exception ignored) {}
+
                         DocumentFile docFile = DocumentFile.fromSingleUri(this, fileUri);
                         String fileName = docFile != null && docFile.getName() != null ? docFile.getName() : "tarjetas.db";
 
@@ -504,7 +525,8 @@ public class MainActivity extends BridgeActivity {
                              .putBoolean("default_storage_chosen", false)
                              .apply();
 
-                        final String fileJson = "{\"success\":true,\"fileName\":\"" + escapeJson(fileName) + "\",\"base64\":\"" + base64 + "\"}";
+                        // Enviar respuesta liviana para evitar límites de tamaño en evaluateJavascript
+                        final String fileJson = "{\"success\":true,\"fileName\":\"" + escapeJson(fileName) + "\"}";
                         runOnUiThread(() -> {
                             if (getBridge() != null && getBridge().getWebView() != null) {
                                 getBridge().getWebView().evaluateJavascript("if (window.onAndroidFilePicked) window.onAndroidFilePicked(" + fileJson + ");", null);
@@ -532,13 +554,21 @@ public class MainActivity extends BridgeActivity {
             if (resultCode == RESULT_OK && data != null && data.getData() != null && pendingSaveBytes != null) {
                 Uri destUri = data.getData();
                 try {
-                    int takeFlags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                    if (takeFlags == 0) {
-                        takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+                    int flags = data.getFlags();
+                    int takeFlags = flags & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    if (takeFlags != 0) {
+                        try {
+                            getContentResolver().takePersistableUriPermission(destUri, takeFlags);
+                        } catch (SecurityException se1) {
+                            try {
+                                getContentResolver().takePersistableUriPermission(destUri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                            } catch (SecurityException se2) {
+                                try {
+                                    getContentResolver().takePersistableUriPermission(destUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                } catch (Exception ignored) {}
+                            }
+                        }
                     }
-                    try {
-                        getContentResolver().takePersistableUriPermission(destUri, takeFlags);
-                    } catch (Exception ignoredPerm) {}
 
                     OutputStream os = null;
                     try {
@@ -551,6 +581,15 @@ public class MainActivity extends BridgeActivity {
                         os.flush();
                         os.close();
                     }
+
+                    // Guardar copia interna garantizada
+                    try {
+                        File internalFile = new File(getExternalFilesDir(null), "tarjetas.db");
+                        FileOutputStream fos = new FileOutputStream(internalFile);
+                        fos.write(pendingSaveBytes);
+                        fos.flush();
+                        fos.close();
+                    } catch (Exception ignored) {}
 
                     DocumentFile doc = DocumentFile.fromSingleUri(this, destUri);
                     String name = doc != null && doc.getName() != null ? doc.getName() : "tarjetas.db";

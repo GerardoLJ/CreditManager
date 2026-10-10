@@ -225,8 +225,9 @@
   function uint8ToBase64(bytes) {
     let binary = '';
     const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    const chunkSize = 8192;
+    for (let i = 0; i < len; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, len)));
     }
     return window.btoa(binary);
   }
@@ -241,7 +242,7 @@
     db.run(`CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, updated_at INTEGER)`);
     db.run(`CREATE TABLE IF NOT EXISTS movements (id TEXT PRIMARY KEY, concept TEXT NOT NULL, amount REAL NOT NULL, date TEXT NOT NULL, card_id TEXT NOT NULL, person_id TEXT NOT NULL, is_set_aside INTEGER DEFAULT 0, updated_at INTEGER)`);
     db.run(`CREATE TABLE IF NOT EXISTS installment_plans (id TEXT PRIMARY KEY, concept TEXT NOT NULL, total_amount REAL NOT NULL, months INTEGER NOT NULL, start_date TEXT NOT NULL, card_id TEXT NOT NULL, person_id TEXT NOT NULL, paid_months INTEGER DEFAULT 0, updated_at INTEGER)`);
-    db.run(`CREATE TABLE IF NOT EXISTS set_asides (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, person_id TEXT NOT NULL, movement_id TEXT, amount REAL NOT NULL, fund_type TEXT DEFAULT 'Efectivo', note TEXT, date TEXT NOT NULL, updated_at INTEGER)`);
+    db.run(`CREATE TABLE IF NOT EXISTS set_asides (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, person_id TEXT NOT NULL, movement_id TEXT, amount REAL NOT NULL, fund_type TEXT DEFAULT 'Efectivo', note TEXT, date TEXT NOT NULL, is_paid INTEGER DEFAULT 0, paid_amount REAL DEFAULT 0, status TEXT DEFAULT 'apartado', updated_at INTEGER)`);
     db.run(`CREATE TABLE IF NOT EXISTS budgets (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, updated_at INTEGER)`);
     db.run(`CREATE TABLE IF NOT EXISTS budget_items (id TEXT PRIMARY KEY, budget_id TEXT NOT NULL, concept TEXT NOT NULL, amount REAL NOT NULL, type TEXT NOT NULL, tag TEXT, updated_at INTEGER)`);
     db.run(`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)`);
@@ -252,31 +253,88 @@
     });
 
     DB.get('cards').forEach(c => {
-      db.run(`INSERT OR REPLACE INTO cards VALUES (?, ?, ?, ?, ?, ?, ?)`, [c.id, c.name, c.credit_limit, c.cutoff_day, c.color || '#1e293b', c.logo_base64 || null, c.updated_at || Date.now()]);
+      db.run(`INSERT OR REPLACE INTO cards VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+        c.id,
+        c.name,
+        Number(c.credit_limit) || 0,
+        parseInt(c.cutoff_day) || 1,
+        c.color || '#1e293b',
+        c.logo_base64 || null,
+        c.updated_at || Date.now()
+      ]);
     });
 
     DB.get('people').forEach(p => {
-      db.run(`INSERT OR REPLACE INTO people VALUES (?, ?, ?)`, [p.id, p.name, p.updated_at || Date.now()]);
+      db.run(`INSERT OR REPLACE INTO people VALUES (?, ?, ?)`, [
+        p.id,
+        p.name,
+        p.updated_at || Date.now()
+      ]);
     });
 
     DB.get('movements').forEach(m => {
-      db.run(`INSERT OR REPLACE INTO movements VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [m.id, m.concept, m.amount, m.date, m.card_id, m.person_id, m.is_set_aside || 0, m.updated_at || Date.now()]);
+      db.run(`INSERT OR REPLACE INTO movements VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
+        m.id,
+        m.concept,
+        Number(m.amount) || 0,
+        m.date,
+        m.card_id,
+        m.person_id,
+        m.is_set_aside ? 1 : 0,
+        m.updated_at || Date.now()
+      ]);
     });
 
     DB.get('installment_plans').forEach(i => {
-      db.run(`INSERT OR REPLACE INTO installment_plans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [i.id, i.concept, i.total_amount, i.months, i.start_date, i.card_id, i.person_id, i.paid_months || 0, i.updated_at || Date.now()]);
+      db.run(`INSERT OR REPLACE INTO installment_plans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+        i.id,
+        i.concept,
+        Number(i.total_amount) || 0,
+        parseInt(i.months) || 1,
+        i.start_date,
+        i.card_id,
+        i.person_id,
+        parseInt(i.paid_months) || 0,
+        i.updated_at || Date.now()
+      ]);
     });
 
     DB.get('set_asides').forEach(s => {
-      db.run(`INSERT OR REPLACE INTO set_asides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [s.id, s.card_id, s.person_id, s.movement_id || null, s.amount, s.fund_type || 'Efectivo', s.note || '', s.date, s.updated_at || Date.now()]);
+      db.run(`INSERT OR REPLACE INTO set_asides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+        s.id,
+        s.card_id,
+        s.person_id,
+        s.movement_id || null,
+        Number(s.amount) || 0,
+        s.fund_type || 'Efectivo',
+        s.note || '',
+        s.date,
+        s.is_paid ? 1 : 0,
+        Number(s.paid_amount) || 0,
+        s.status || 'apartado',
+        s.updated_at || Date.now()
+      ]);
     });
 
     DB.get('budgets').forEach(b => {
-      db.run(`INSERT OR REPLACE INTO budgets VALUES (?, ?, ?, ?)`, [b.id, b.name, b.description || '', b.updated_at || Date.now()]);
+      db.run(`INSERT OR REPLACE INTO budgets VALUES (?, ?, ?, ?)`, [
+        b.id,
+        b.name,
+        b.description || '',
+        b.updated_at || Date.now()
+      ]);
     });
 
     DB.get('budget_items').forEach(bi => {
-      db.run(`INSERT OR REPLACE INTO budget_items VALUES (?, ?, ?, ?, ?, ?, ?)`, [bi.id, bi.budget_id, bi.concept, bi.amount, bi.type, bi.tag, bi.updated_at || Date.now()]);
+      db.run(`INSERT OR REPLACE INTO budget_items VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+        bi.id,
+        bi.budget_id,
+        bi.concept,
+        Number(bi.amount) || 0,
+        bi.type,
+        bi.tag || '',
+        bi.updated_at || Date.now()
+      ]);
     });
 
     const binary = db.export();
