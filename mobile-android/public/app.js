@@ -459,6 +459,13 @@ async function renderCards() {
     const totalDebt = Math.max(0, (regularSpent - cardPaidToBank) + msiPending);
     const available = Math.max(0, card.credit_limit - totalDebt);
     const percent = Math.min(100, (totalDebt / card.credit_limit) * 100);
+    const missingToSetAside = Math.max(0, totalDebt - cardInHand);
+    let missingNote = '';
+    if (totalDebt <= 0.001) {
+      missingNote = '<small style="font-size:0.75rem; font-weight:normal; color:#a7f3d0;">(Sin Deuda)</small>';
+    } else if (missingToSetAside <= 0.001) {
+      missingNote = '<small style="font-size:0.75rem; font-weight:normal; color:#a7f3d0;">(100% Cubierto)</small>';
+    }
 
     // Desglose de adeudos por persona / deudor para esta tarjeta específica (solo personas que deben > 0)
     const debtorsWithDebt = [];
@@ -517,6 +524,14 @@ async function renderCards() {
         <div class="metric-row" style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.2);">
           <span style="color: #6ee7b7;">💰 Apartado / En Mano:</span>
           <span class="metric-val" style="color: #6ee7b7;">$${cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+        </div>
+        <div class="metric-row">
+          <span style="color: ${missingToSetAside > 0 ? '#f59e0b' : '#34d399'}; font-weight: 600;">
+            ${missingToSetAside > 0 ? '⚠️ Falta por Apartar:' : '✅ Falta por Apartar:'}
+          </span>
+          <span class="metric-val" style="color: ${missingToSetAside > 0 ? '#f59e0b' : '#34d399'}; font-weight: 700;">
+            $${missingToSetAside.toLocaleString('es-MX', {minimumFractionDigits: 2})} ${missingNote}
+          </span>
         </div>
         <div class="card-progress-bar">
           <div class="card-progress-fill ${progressClass}" style="width: ${percent}%;"></div>
@@ -1329,7 +1344,12 @@ async function deletePerson(pId) {
 
 // --- CALENDARIO Y AGENDA ---
 async function renderCalendar() {
-  const cards = await fetch('/api/cards').then(r => r.json());
+  const [cards, movs, setAsides] = await Promise.all([
+    fetch('/api/cards').then(r => r.json()),
+    fetch('/api/movements').then(r => r.json()),
+    fetch('/api/set-asides').then(r => r.json())
+  ]);
+
   const summaryBox = document.getElementById('calendar-cards-summary');
   summaryBox.innerHTML = '';
 
@@ -1389,25 +1409,127 @@ async function renderCalendar() {
 
   const today = new Date();
   const currentDay = today.getDate();
+  const isViewingCurrentMonth = (currentCalMonth === today.getMonth() && currentCalYear === today.getFullYear());
+  const isPastMonth = (currentCalYear < today.getFullYear() || (currentCalYear === today.getFullYear() && currentCalMonth < today.getMonth()));
 
+  // Cargar MSI para cálculo de deuda exacta de cada tarjeta
+  const msiMap = {};
+  const msiResults = await Promise.all(cards.map(c => fetch(`/api/msi/${c.id}`).then(r => r.json()).catch(() => [])));
+  cards.forEach((c, idx) => {
+    msiMap[String(c.id)] = msiResults[idx] || [];
+  });
+
+  const cardDataMap = {};
   cards.forEach(card => {
-    let daysToCutoff = card.cutoff_day - currentDay;
-    if (daysToCutoff < 0) {
+    const cardIdStr = String(card.id);
+    const cardMovs = movs.filter(m => String(m.card_id) === cardIdStr);
+    const regularSpent = cardMovs.reduce((sum, m) => sum + m.amount, 0);
+
+    const cardMsi = msiMap[cardIdStr] || [];
+    const msiPending = cardMsi.reduce((sum, p) => sum + (p.total_amount - (p.total_amount / p.months * p.paid_months)), 0);
+
+    const cardSetAsides = setAsides.filter(s => {
+      if (String(s.card_id) === cardIdStr) return true;
+      if (s.movement_id) {
+        const m = movs.find(x => String(x.id) === String(s.movement_id));
+        if (m && String(m.card_id) === cardIdStr) return true;
+      }
+      return false;
+    });
+
+    const cardPaidToBank = cardSetAsides.reduce((sum, s) => sum + (Number(s.paid_amount) || (s.is_paid ? s.amount : 0)), 0);
+    const cardInHand = cardSetAsides.reduce((sum, s) => sum + Math.max(0, s.amount - (Number(s.paid_amount) || (s.is_paid ? s.amount : 0))), 0);
+
+    const totalDebt = Math.max(0, (regularSpent - cardPaidToBank) + msiPending);
+    const isPaid = (totalDebt <= 0.001);
+    const isFullyCoveredByAside = !isPaid && (cardInHand >= totalDebt);
+    const missingToSetAside = Math.max(0, totalDebt - cardInHand);
+
+    let hasCutThisMonth = false;
+    let isCuttingToday = false;
+    let daysToCutoff = 0;
+
+    if (isPastMonth) {
+      hasCutThisMonth = true;
+    } else if (isViewingCurrentMonth) {
+      if (currentDay > card.cutoff_day) {
+        hasCutThisMonth = true;
+      } else if (currentDay === card.cutoff_day) {
+        isCuttingToday = true;
+      } else {
+        daysToCutoff = card.cutoff_day - currentDay;
+      }
+    } else {
       const lastDayThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
       daysToCutoff = (lastDayThisMonth - currentDay) + card.cutoff_day;
     }
 
+    cardDataMap[cardIdStr] = {
+      card,
+      totalDebt,
+      cardPaidToBank,
+      cardInHand,
+      isPaid,
+      isFullyCoveredByAside,
+      missingToSetAside,
+      hasCutThisMonth,
+      isCuttingToday,
+      daysToCutoff
+    };
+  });
+
+  cards.forEach(card => {
+    const data = cardDataMap[String(card.id)];
+    const { totalDebt, cardInHand, isPaid, isFullyCoveredByAside, missingToSetAside, hasCutThisMonth, isCuttingToday, daysToCutoff } = data;
+
+    let cutBadgeHtml = '';
+    if (hasCutThisMonth) {
+      cutBadgeHtml = `<span class="cal-badge cut-done" title="Corte cerrado este mes">✂️ Ya Cortó (Día ${card.cutoff_day})</span>`;
+    } else if (isCuttingToday) {
+      cutBadgeHtml = `<span class="cal-badge cut-today" title="Corte hoy">⚡ ¡Corta HOY!</span>`;
+    } else {
+      cutBadgeHtml = `<span class="cal-badge cut-pending" title="Corte pendiente">⏳ Corta en ${daysToCutoff} días</span>`;
+    }
+
+    let payBadgeHtml = '';
+    if (isPaid) {
+      payBadgeHtml = `<span class="cal-badge paid-done" title="Sin deuda pendiente al banco">✅ Pagada ($0 deuda)</span>`;
+    } else if (isFullyCoveredByAside) {
+      payBadgeHtml = `<span class="cal-badge paid-covered" title="Dinero 100% apartado en mano">💰 100% Apartado</span>`;
+    } else {
+      payBadgeHtml = `<span class="cal-badge paid-pending" title="Falta por liquidar">🔴 Falta pagar: $${totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>`;
+    }
+
+    let statusRowHtml = '';
+    if (isPaid) {
+      statusRowHtml = `<div class="cal-card-status-row paid"><span>🎉 ¡Tarjeta liquidada al 100%!</span> <strong>$0.00 deuda</strong></div>`;
+    } else if (isFullyCoveredByAside) {
+      statusRowHtml = `<div class="cal-card-status-row covered"><span>💰 Apartado listo para pagar:</span> <strong>$${cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></div>`;
+    } else {
+      statusRowHtml = `
+        <div class="cal-card-status-row pending">
+          <span>Deuda: <strong>$${totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
+          <span>Falta apartar: <strong style="color:#f59e0b;">$${missingToSetAside.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
+        </div>
+      `;
+    }
+
     const cardEl = document.createElement('div');
-    cardEl.className = 'cal-summary-card';
+    cardEl.className = `cal-summary-card ${isPaid ? 'card-paid' : (hasCutThisMonth ? 'card-cut-done' : '')}`;
     cardEl.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <strong>${escapeHtml(card.name)}</strong>
-        <span class="countdown-badge ${daysToCutoff <= 3 ? 'urgent' : 'normal'}">
-          ${daysToCutoff === 0 ? '¡Corte HOY!' : `Corte en ${daysToCutoff} días`}
-        </span>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:8px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <strong style="font-size:1.05rem;">${escapeHtml(card.name)}</strong>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+          ${cutBadgeHtml}
+          ${payBadgeHtml}
+        </div>
       </div>
-      <div class="small text-muted">Día de corte: <strong>${card.cutoff_day}</strong></div>
-      <div class="small">Ventana de pago: <strong>Día ${card.cutoff_day + 1} al ${card.cutoff_day + 15}</strong></div>
+      <div class="small text-muted" style="margin-bottom:4px;">
+        Día de corte: <strong>${card.cutoff_day}</strong> | Ventana: <strong>Día ${card.cutoff_day + 1} al ${card.cutoff_day + 15}</strong>
+      </div>
+      ${statusRowHtml}
     `;
     summaryBox.appendChild(cardEl);
   });
@@ -1460,16 +1582,37 @@ async function renderCalendar() {
     let dotsHtml = '';
 
     dayCortes.forEach(c => {
-      pillsHtml += `<div class="cal-event-pill corte" title="Día de corte">✂️ ${escapeHtml(c.name)}</div>`;
-      dotsHtml += `<span class="cal-event-dot corte" title="Día de corte: ${escapeHtml(c.name)}"></span>`;
+      const alreadyCut = (isViewingCurrentMonth && day <= currentDay) || isPastMonth;
+      if (alreadyCut) {
+        pillsHtml += `<div class="cal-event-pill corte-done" title="Corte cerrado el día ${day}">✓ ✂️ ${escapeHtml(c.name)} (Cortó)</div>`;
+        dotsHtml += `<span class="cal-event-dot corte-done" title="Ya cortó: ${escapeHtml(c.name)}"></span>`;
+      } else {
+        pillsHtml += `<div class="cal-event-pill corte" title="Día de corte de facturación">✂️ ${escapeHtml(c.name)}</div>`;
+        dotsHtml += `<span class="cal-event-dot corte" title="Día de corte: ${escapeHtml(c.name)}"></span>`;
+      }
     });
+
     dayInicios.forEach(c => {
-      pillsHtml += `<div class="cal-event-pill pago-inicio" title="Inicio de ventana de pago">💰 Pago ${escapeHtml(c.name)}</div>`;
-      dotsHtml += `<span class="cal-event-dot pago-inicio" title="Inicio de pago: ${escapeHtml(c.name)}"></span>`;
+      const data = cardDataMap[String(c.id)];
+      if (data && data.isPaid) {
+        pillsHtml += `<div class="cal-event-pill pago-inicio" title="Periodo de pago abierto (Tarjeta saldada)">💳 Pago ${escapeHtml(c.name)} ✓</div>`;
+        dotsHtml += `<span class="cal-event-dot pago-inicio" title="Periodo pago: ${escapeHtml(c.name)}"></span>`;
+      } else {
+        pillsHtml += `<div class="cal-event-pill pago-inicio" title="Inicio de ventana de pago al banco">💰 Pago ${escapeHtml(c.name)}</div>`;
+        dotsHtml += `<span class="cal-event-dot pago-inicio" title="Inicio de pago: ${escapeHtml(c.name)}"></span>`;
+      }
     });
+
     dayLimites.forEach(c => {
-      pillsHtml += `<div class="cal-event-pill pago-limite" title="Último día de pago (Día 15)">⚠️ Límite ${escapeHtml(c.name)}</div>`;
-      dotsHtml += `<span class="cal-event-dot pago-limite" title="Límite: ${escapeHtml(c.name)}"></span>`;
+      const data = cardDataMap[String(c.id)];
+      if (data && data.isPaid) {
+        pillsHtml += `<div class="cal-event-pill pago-pagado" title="Tarjeta ya pagada este mes ($0 deuda)">✅ ${escapeHtml(c.name)} (Pagada)</div>`;
+        dotsHtml += `<span class="cal-event-dot pago-pagado" title="Pagada: ${escapeHtml(c.name)}"></span>`;
+      } else {
+        const debtText = data && data.totalDebt > 0 ? ` ($${data.totalDebt.toLocaleString()})` : '';
+        pillsHtml += `<div class="cal-event-pill pago-limite" title="Último día de pago para no generar intereses">⚠️ Límite ${escapeHtml(c.name)}${debtText}</div>`;
+        dotsHtml += `<span class="cal-event-dot pago-limite" title="Límite: ${escapeHtml(c.name)}"></span>`;
+      }
     });
 
     cell.innerHTML = `
@@ -1487,19 +1630,24 @@ async function renderCalendar() {
       selectedCalDay = day;
       document.querySelectorAll('.cal-day-cell').forEach(c => c.classList.remove('selected'));
       cell.classList.add('selected');
-      updateDayDetailPanel(day, currentCalMonth, currentCalYear, cards, hasValidConvergence, convergenceStart, convergenceEnd);
+      updateDayDetailPanel(day, currentCalMonth, currentCalYear, cards, cardDataMap, hasValidConvergence, convergenceStart, convergenceEnd);
     });
 
     daysGrid.appendChild(cell);
   }
 
   // Actualizar panel de detalle del día
-  updateDayDetailPanel(selectedCalDay, currentCalMonth, currentCalYear, cards, hasValidConvergence, convergenceStart, convergenceEnd);
+  updateDayDetailPanel(selectedCalDay, currentCalMonth, currentCalYear, cards, cardDataMap, hasValidConvergence, convergenceStart, convergenceEnd);
 }
 
-function updateDayDetailPanel(day, month, year, cards, hasValidConvergence, convStart, convEnd) {
+function updateDayDetailPanel(day, month, year, cards, cardDataMap, hasValidConvergence, convStart, convEnd) {
   const panel = document.getElementById('calendar-day-detail-panel');
   if (!panel) return;
+
+  const today = new Date();
+  const currentDay = today.getDate();
+  const isViewingCurrentMonth = (month === today.getMonth() && year === today.getFullYear());
+  const isPastMonth = (year < today.getFullYear() || (year === today.getFullYear() && month < today.getMonth()));
 
   const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
   const dayCortes = cards.filter(c => c.cutoff_day === day);
@@ -1528,37 +1676,71 @@ function updateDayDetailPanel(day, month, year, cards, hasValidConvergence, conv
   } else {
     contentHtml += `<div class="cal-detail-events-list">`;
     dayCortes.forEach(c => {
-      contentHtml += `
-        <div class="cal-detail-event-item corte">
-          <div>
-            <strong>✂️ Corte de Tarjeta: ${escapeHtml(c.name)}</strong>
-            <div class="small text-muted">Último día del ciclo. A partir de mañana inicia el periodo oficial para pagar al banco.</div>
+      const alreadyCut = (isViewingCurrentMonth && day <= currentDay) || isPastMonth;
+      if (alreadyCut) {
+        contentHtml += `
+          <div class="cal-detail-event-item corte-done">
+            <div>
+              <strong>✂️ Corte de Tarjeta: ${escapeHtml(c.name)} <span class="badge-tag done">✓ YA CORTÓ</span></strong>
+              <div class="small text-muted">El ciclo cerró el día ${c.cutoff_day}. Tu estado de cuenta de este mes ya está emitido.</div>
+            </div>
+            <span class="countdown-badge success">Ciclo Cerrado</span>
           </div>
-          <span class="countdown-badge normal">Día ${c.cutoff_day}</span>
-        </div>
-      `;
+        `;
+      } else {
+        contentHtml += `
+          <div class="cal-detail-event-item corte">
+            <div>
+              <strong>✂️ Corte de Tarjeta: ${escapeHtml(c.name)}</strong>
+              <div class="small text-muted">Último día del ciclo. A partir de mañana inicia el periodo oficial para pagar al banco.</div>
+            </div>
+            <span class="countdown-badge normal">Día ${c.cutoff_day}</span>
+          </div>
+        `;
+      }
     });
+
     dayInicios.forEach(c => {
+      const data = cardDataMap ? cardDataMap[String(c.id)] : null;
+      const isPaid = data && data.isPaid;
       contentHtml += `
         <div class="cal-detail-event-item pago-inicio">
           <div>
-            <strong>💰 Inicio de Ventana de Pago: ${escapeHtml(c.name)}</strong>
-            <div class="small text-muted">Ya puedes pagar al banco con tu estado de cuenta cerrado. Tienes hasta el día ${c.cutoff_day + 15}.</div>
+            <strong>💰 Inicio de Ventana de Pago: ${escapeHtml(c.name)} ${isPaid ? '<span class="badge-tag done" style="background:rgba(16,185,129,0.25); color:#34d399;">✓ YA PAGADA</span>' : ''}</strong>
+            <div class="small text-muted">${isPaid ? 'Esta tarjeta ya se encuentra totalmente saldada ($0 deuda).' : `Ya puedes pagar al banco con tu estado de cuenta cerrado. Tienes hasta el día ${c.cutoff_day + 15}.`}</div>
           </div>
-          <span class="countdown-badge success">Inicio Pago</span>
+          <span class="countdown-badge success">${isPaid ? 'Al Día' : 'Inicio Pago'}</span>
         </div>
       `;
     });
+
     dayLimites.forEach(c => {
-      contentHtml += `
-        <div class="cal-detail-event-item pago-limite">
-          <div>
-            <strong style="color:var(--danger-color);">⚠️ Fecha Límite de Pago: ${escapeHtml(c.name)}</strong>
-            <div class="small text-muted">¡Día final para pagar! Liquida hoy para no generar intereses bancarios ni penalizaciones.</div>
+      const data = cardDataMap ? cardDataMap[String(c.id)] : null;
+      const isPaid = data && data.isPaid;
+      if (isPaid) {
+        contentHtml += `
+          <div class="cal-detail-event-item pago-pagado">
+            <div>
+              <strong style="color:#10b981;">✅ Fecha Límite de Pago: ${escapeHtml(c.name)} <span class="badge-tag done" style="background:rgba(16,185,129,0.25); color:#34d399;">✓ YA PAGADA</span></strong>
+              <div class="small text-muted">¡Esta tarjeta ya fue saldada este mes! No tienes pagos pendientes ni generarás intereses.</div>
+            </div>
+            <span class="countdown-badge success">Liquidada</span>
           </div>
-          <span class="countdown-badge urgent">Vence Hoy</span>
-        </div>
-      `;
+        `;
+      } else {
+        const debt = data ? data.totalDebt : 0;
+        const covered = data && data.isFullyCoveredByAside;
+        const missing = data ? data.missingToSetAside : debt;
+        contentHtml += `
+          <div class="cal-detail-event-item pago-limite">
+            <div>
+              <strong style="color:var(--danger-color);">⚠️ Fecha Límite de Pago: ${escapeHtml(c.name)} <span class="badge-tag urgent">PENDIENTE</span></strong>
+              <div class="small text-muted">Deuda al banco: $${debt.toLocaleString('es-MX', {minimumFractionDigits: 2})}. ${covered ? 'Tienes el 100% apartado en mano listo para pagar.' : `Falta por apartar: $${missing.toLocaleString('es-MX', {minimumFractionDigits: 2})}`}</div>
+            </div>
+            <span class="countdown-badge urgent">$${debt.toLocaleString()} por pagar</span>
+          </div>
+        `;
+      }
     });
     contentHtml += `</div>`;
   }

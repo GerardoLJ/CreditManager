@@ -1407,7 +1407,9 @@ button:hover,
 }
 
 .cal-event-dot.corte { background-color: #94a3b8; }
-.cal-event-dot.pago-inicio { background-color: #10b981; }
+.cal-event-dot.corte-done { background-color: #818cf8; }
+.cal-event-dot.pago-inicio { background-color: #059669; }
+.cal-event-dot.pago-pagado { background-color: #10b981; }
 .cal-event-dot.pago-limite { background-color: #ef4444; }
 
 .cal-event-pill {
@@ -1426,9 +1428,21 @@ button:hover,
   color: #e2e8f0; 
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
+.cal-event-pill.corte-done { 
+  background: #4338ca; 
+  color: #e0e7ff; 
+  border: 1px solid rgba(129, 140, 248, 0.4);
+}
 .cal-event-pill.pago-inicio { 
   background: #059669; 
   color: #ffffff; 
+}
+.cal-event-pill.pago-pagado { 
+  background: #047857; 
+  color: #ffffff; 
+  border: 1px solid #34d399;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(16, 185, 129, 0.3);
 }
 .cal-event-pill.pago-limite { 
   background: #dc2626; 
@@ -1436,6 +1450,109 @@ button:hover,
   font-weight: 700;
   box-shadow: 0 1px 3px rgba(220, 38, 38, 0.4);
 }
+
+/* LEYENDA RÁPIDA DE CALENDARIO */
+.calendar-legend-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #cbd5e1;
+}
+
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* BADGES Y ESTILOS DE TARJETAS EN CALENDARIO */
+.cal-summary-card {
+  position: relative;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.cal-summary-card.card-cut-done {
+  border-left: 4px solid #818cf8;
+}
+
+.cal-summary-card.card-paid {
+  border-left: 4px solid #10b981;
+  border-color: rgba(16, 185, 129, 0.4);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, var(--bg-surface) 100%);
+}
+
+.cal-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.cal-badge.cut-done { background: rgba(129, 140, 248, 0.2); color: #a5b4fc; border: 1px solid rgba(129, 140, 248, 0.3); }
+.cal-badge.cut-today { background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+.cal-badge.cut-pending { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+.cal-badge.paid-done { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+.cal-badge.paid-covered { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
+.cal-badge.paid-pending { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+
+.cal-card-status-row {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cal-card-status-row.paid {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  font-weight: 600;
+}
+
+.cal-card-status-row.covered {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.cal-card-status-row.pending {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px dashed rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.cal-detail-event-item.corte-done { border-left: 4px solid #818cf8; }
+.cal-detail-event-item.pago-pagado { border-left: 4px solid #10b981; }
+
+.badge-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.badge-tag.done { background: rgba(129, 140, 248, 0.25); color: #a5b4fc; }
+.badge-tag.urgent { background: rgba(239, 68, 68, 0.25); color: #f87171; }
 
 /* PANEL DE AGENDA / DETALLE DEL DÍA EN CALENDARIO */
 .calendar-day-detail-panel {
