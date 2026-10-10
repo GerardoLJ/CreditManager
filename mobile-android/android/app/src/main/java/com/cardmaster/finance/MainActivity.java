@@ -97,8 +97,9 @@ public class MainActivity extends BridgeActivity {
             boolean defaultChosen = prefs.getBoolean("default_storage_chosen", false);
             boolean configured = isStorageConfigured();
             boolean hasDb = hasDbFile("tarjetas.db");
+            long sizeBytes = getDbFileSize("tarjetas.db");
             String display = !name.isEmpty() ? name : (defaultChosen ? "Carpeta privada de la app" : "Sin configurar");
-            return "{\"configured\":" + configured + ",\"folderName\":\"" + escapeJson(name) + "\",\"pathDisplay\":\"" + escapeJson(display) + "\",\"hasDb\":" + hasDb + "}";
+            return "{\"configured\":" + configured + ",\"folderName\":\"" + escapeJson(name) + "\",\"pathDisplay\":\"" + escapeJson(display) + "\",\"hasDb\":" + hasDb + ",\"sizeBytes\":" + sizeBytes + "}";
         }
 
         @JavascriptInterface
@@ -129,7 +130,12 @@ public class MainActivity extends BridgeActivity {
                                 dbFile = pickedDir.createFile("application/x-sqlite3", filename);
                             }
                             if (dbFile != null) {
-                                OutputStream os = context.getContentResolver().openOutputStream(dbFile.getUri(), "wt");
+                                OutputStream os = null;
+                                try {
+                                    os = context.getContentResolver().openOutputStream(dbFile.getUri(), "wt");
+                                } catch (Exception eWt) {
+                                    os = context.getContentResolver().openOutputStream(dbFile.getUri(), "w");
+                                }
                                 if (os != null) {
                                     os.write(bytes);
                                     os.flush();
@@ -237,6 +243,26 @@ public class MainActivity extends BridgeActivity {
             }
             File file = new File(context.getExternalFilesDir(null), filename);
             return file.exists() && file.length() > 0;
+        }
+
+        @JavascriptInterface
+        public long getDbFileSize(String filename) {
+            SharedPreferences prefs = context.getSharedPreferences("CardMasterStorage", Context.MODE_PRIVATE);
+            String treeUriStr = prefs.getString("selected_tree_uri", null);
+            if (treeUriStr != null && !treeUriStr.isEmpty()) {
+                try {
+                    Uri treeUri = Uri.parse(treeUriStr);
+                    DocumentFile pickedDir = DocumentFile.fromTreeUri(context, treeUri);
+                    if (pickedDir != null && pickedDir.exists()) {
+                        DocumentFile dbFile = pickedDir.findFile(filename);
+                        if (dbFile != null && dbFile.exists()) {
+                            return dbFile.length();
+                        }
+                    }
+                } catch (Exception e) {}
+            }
+            File file = new File(context.getExternalFilesDir(null), filename);
+            return (file.exists() && file.isFile()) ? file.length() : 0;
         }
     }
 

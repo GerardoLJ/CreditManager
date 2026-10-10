@@ -1007,10 +1007,10 @@
           const sInfo = JSON.parse(window.AndroidNativeStorage.getStorageInfo());
           if (sInfo.folderName) {
             activePath = '📁 ' + sInfo.folderName + '/tarjetas.db';
-            statusDesc = 'Carpeta externa (' + sInfo.folderName + ')';
+            statusDesc = sInfo.sizeBytes ? (sInfo.sizeBytes / 1024).toFixed(1) + ' KB (Carpeta ' + sInfo.folderName + ')' : 'Carpeta externa (' + sInfo.folderName + ')';
           } else if (sInfo.pathDisplay) {
             activePath = sInfo.pathDisplay;
-            statusDesc = 'Almacenamiento Android';
+            statusDesc = sInfo.sizeBytes ? (sInfo.sizeBytes / 1024).toFixed(1) + ' KB (Android)' : 'Almacenamiento Android';
           }
           hasDb = sInfo.hasDb !== undefined ? sInfo.hasDb : true;
         } catch (e) {

@@ -1014,6 +1014,301 @@ button:hover,
   border-radius: 50%;
 }
 
+/* DESGLOSE GENERAL Y POR TARJETA */
+.cards-debt-summary-box {
+  margin-bottom: 24px;
+}
+
+.cards-debt-summary-card {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+[data-theme="light"] .cards-debt-summary-card {
+  background: linear-gradient(135deg, #ffffff, #f8fafc);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.06);
+}
+
+.cards-debt-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.cards-debt-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cards-debt-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.cards-debt-val {
+  font-size: 2.1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #f87171;
+  line-height: 1.1;
+}
+
+[data-theme="light"] .cards-debt-val {
+  color: #dc2626;
+}
+
+.cards-debt-submetrics {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cards-debt-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+}
+
+[data-theme="light"] .cards-debt-pill {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.cards-debt-pill.in-hand {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.cards-debt-pill.missing {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.cards-debt-pill.covered {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.pill-icon {
+  font-size: 1.25rem;
+}
+
+.pill-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.pill-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.pill-val {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.cards-debt-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 16px 0 14px 0;
+}
+
+[data-theme="light"] .cards-debt-divider {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.cards-debt-breakdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.breakdown-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.breakdown-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.cards-debt-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.debt-breakdown-card-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.debt-breakdown-card-item:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+[data-theme="light"] .debt-breakdown-card-item {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+[data-theme="light"] .debt-breakdown-card-item:hover {
+  background: #f1f5f9;
+  border-color: #93c5fd;
+}
+
+.breakdown-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.breakdown-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.card-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+}
+
+.breakdown-card-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-main);
+}
+
+.breakdown-status-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+.breakdown-status-badge.badge-zero {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.breakdown-status-badge.badge-covered {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.breakdown-status-badge.badge-partial {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.breakdown-status-badge.badge-pending {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.breakdown-debt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.breakdown-debt-label {
+  color: var(--text-muted);
+}
+
+.breakdown-debt-value {
+  font-weight: 700;
+}
+
+.breakdown-debt-value.has-debt {
+  color: #f87171;
+}
+
+.breakdown-debt-value.no-debt {
+  color: #34d399;
+}
+
+.breakdown-extra-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .breakdown-extra-row {
+  border-top-color: rgba(0, 0, 0, 0.06);
+}
+
+@keyframes cardPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+  50% { transform: scale(1.02); box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+.card-highlight-pulse {
+  animation: cardPulse 0.9s ease-in-out;
+  border: 2px solid #3b82f6 !important;
+}
+
+@media (max-width: 640px) {
+  .cards-debt-summary-card {
+    padding: 16px;
+  }
+  .cards-debt-val {
+    font-size: 1.7rem;
+  }
+  .cards-debt-breakdown-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* TARJETAS DE CRÉDITO - GRID INTELIGENTE Y DRAG & DROP */
 .cards-grid {
   display: grid;

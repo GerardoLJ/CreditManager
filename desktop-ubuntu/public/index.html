@@ -223,9 +223,14 @@
         <div class="section-header">
           <div>
             <h2>Mis Tarjetas de Crédito</h2>
-            <p class="text-muted">Límites, disponibles, cortes y fondo apartado para pago</p>
+            <p class="text-muted">Desglose general y saldo deudor por tarjeta</p>
           </div>
           <button id="btn-new-card" class="btn btn-primary">+ Nueva Tarjeta</button>
+        </div>
+
+        <!-- PANEL DE DESGLOSE GENERAL Y POR TARJETA -->
+        <div id="cards-debt-summary" class="cards-debt-summary-box">
+          <!-- Renderizado dinámicamente en app.js -->
         </div>
 
         <div id="cards-grid" class="cards-grid">
@@ -454,11 +459,14 @@
 
             <div class="action-buttons-col">
               <button type="button" id="btn-settings-change-folder" class="btn btn-secondary btn-block" style="margin-bottom: 8px;">
-                📁 Cambiar Carpeta de Guardado (Teléfono)
+                📁 Elegir / Cambiar Carpeta de Guardado (Teléfono)
               </button>
               <button id="btn-save-db-local" class="btn btn-primary btn-block">
-                💾 Guardar / Elegir Carpeta para Guardar DB
+                💾 Guardar / Elegir Carpeta para Guardar DB (Sobrescribir con Datos Actuales)
               </button>
+              <p class="small text-muted" style="margin-top: 6px; margin-bottom: 12px; line-height: 1.4;">
+                Sobrescribe directamente el archivo <code>tarjetas.db</code> en la memoria de tu teléfono con toda la información y modificaciones actuales.
+              </p>
               
               <div id="dropzone-db-restore" class="dropzone-box">
                 <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3,.bd" class="file-input-hidden">
