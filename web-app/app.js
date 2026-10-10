@@ -175,6 +175,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupDragAndDrop();
   setupServerConnectionControls();
+  await initPhysicalStorage();
   checkAuthStatus();
 });
 
@@ -511,11 +512,6 @@ async function renderCards() {
           <span>Deuda al Banco:</span>
           <span class="metric-val">$${totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
         </div>
-        ${cardPaidToBank > 0 ? `
-        <div class="metric-row">
-          <span style="color: #60a5fa;">💳 Pagado al Banco:</span>
-          <span class="metric-val" style="color: #60a5fa;">$${cardPaidToBank.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
-        </div>` : ''}
         <div class="metric-row" style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.2);">
           <span style="color: #6ee7b7;">💰 Apartado / En Mano:</span>
           <span class="metric-val" style="color: #6ee7b7;">$${cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
@@ -789,15 +785,20 @@ async function renderSetAsides() {
   const tbody = document.getElementById('setaside-tbody');
   tbody.innerHTML = '';
 
-  if (!setAsides.length) {
+  const activeSetAsides = setAsides.filter(s => {
+    const paidAmt = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
+    const isFullyPaid = s.status === 'pagado' || (paidAmt >= s.amount && s.amount > 0);
+    return !isFullyPaid && s.amount > 0;
+  });
+
+  if (!activeSetAsides.length) {
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Aún no tienes apartados registrados</td></tr>`;
     return;
   }
 
-  setAsides.forEach(s => {
+  activeSetAsides.forEach(s => {
     const isDebit = s.fund_type === 'Débito' || s.fund_type === 'Debito';
     const paidAmt = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
-    const isFullyPaid = s.status === 'pagado' || (paidAmt >= s.amount && s.amount > 0);
     const isPartialPaid = s.status === 'pago_parcial' || (paidAmt > 0 && paidAmt < s.amount);
     
     let statusBadge = '';
@@ -843,12 +844,11 @@ async function renderSetAsides() {
 
 async function openPayBankModal(asideId) {
   const asides = await fetch('/api/set-asides').then(r => r.json());
-  const s = asides.find(x => x.id === asideId);
+  const s = asides.find(x => String(x.id) === String(asideId));
   if (!s) return;
 
   currentPayingAside = s;
-  const paidAmt = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
-  const remaining = Math.max(0, s.amount - paidAmt);
+  const remaining = Number(s.amount) || 0;
 
   document.getElementById('pay-bank-aside-id').value = s.id;
   document.getElementById('pay-bank-card-name').value = s.card_name || 'Tarjeta';
@@ -869,8 +869,7 @@ async function handlePayBankSubmit(e) {
 
   const asideId = document.getElementById('pay-bank-aside-id').value;
   const isPartial = document.getElementById('pay-mode-partial').checked;
-  const paidAlready = Number(currentPayingAside.paid_amount) || (currentPayingAside.is_paid ? currentPayingAside.amount : 0);
-  const remaining = Math.max(0, currentPayingAside.amount - paidAlready);
+  const remaining = Number(currentPayingAside.amount) || 0;
 
   let amountToPay = remaining;
   if (isPartial) {
@@ -879,21 +878,32 @@ async function handlePayBankSubmit(e) {
       showToast("Ingresa un monto válido a pagar", "error");
       return;
     }
+    if (amountToPay > remaining) {
+      amountToPay = remaining;
+    }
   }
-
-  const totalPaidAfter = Math.min(currentPayingAside.amount, paidAlready + amountToPay);
 
   try {
     const res = await fetch(`/api/set-asides/${asideId}/pay`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paid_amount: totalPaidAfter })
+      body: JSON.stringify({ paid_amount: amountToPay })
     });
-    if (!res.ok) throw new Error("Error procesando pago");
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || "Error procesando pago al banco");
+    }
 
+    const payResult = await res.json();
     document.getElementById('modal-pay-bank').classList.add('hidden');
     await refreshAllData();
-    showToast(`¡Pago de $${amountToPay.toLocaleString('es-MX', {minimumFractionDigits:2})} aplicado al banco con éxito!`, "success");
+    await syncPhysicalDbFile();
+
+    if (payResult.fully_settled) {
+      showToast(`✅ ¡Liquidado al 100%! Gasto saldado y crédito liberado en tu tarjeta`, "success");
+    } else {
+      showToast(`✅ Abono de $${amountToPay.toLocaleString('es-MX', {minimumFractionDigits:2})} aplicado al banco con éxito`, "success");
+    }
   } catch (err) {
     showToast(err.message || "Error al pagar", "error");
   }
@@ -905,6 +915,7 @@ async function unpaySetAside(asideId) {
     const res = await fetch(`/api/set-asides/${asideId}/unpay`, { method: 'POST' });
     if (!res.ok) throw new Error("Error al revertir pago");
     await refreshAllData();
+    await syncPhysicalDbFile();
     showToast("Pago revertido a dinero en mano", "success");
   } catch (err) {
     showToast(err.message || "Error al revertir", "error");
@@ -917,6 +928,7 @@ async function deleteSetAside(asideId) {
     const res = await fetch(`/api/set-asides/${asideId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error("Error al eliminar apartado");
     await refreshAllData();
+    await syncPhysicalDbFile();
     showToast("Dinero apartado eliminado exitosamente", "success");
   } catch (err) {
     showToast(err.message || "Error al eliminar apartado", "error");
@@ -925,14 +937,36 @@ async function deleteSetAside(asideId) {
 
 async function payMovementFromAside(movId) {
   const asides = await fetch('/api/set-asides').then(r => r.json());
-  const related = asides.find(s => s.movement_id === movId);
+  const related = asides.find(s => String(s.movement_id) === String(movId));
   if (related) {
     openPayBankModal(related.id);
   } else {
     const movs = await fetch('/api/movements').then(r => r.json());
-    const m = movs.find(x => x.id === movId);
+    const m = movs.find(x => String(x.id) === String(movId));
     if (m) {
-      openSetAsideModal(m.id, m.card_id, m.person_id, m.amount);
+      try {
+        const res = await fetch('/api/set-asides', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            card_id: m.card_id,
+            person_id: m.person_id,
+            movement_id: m.id,
+            amount: m.amount,
+            fund_type: 'Débito',
+            note: `Liquidación de: ${m.concept}`,
+            date: new Date().toISOString().split('T')[0]
+          })
+        });
+        const created = await res.json();
+        if (created && created.id) {
+          await openPayBankModal(created.id);
+        } else {
+          openSetAsideModal(m.id, m.card_id, m.person_id, m.amount);
+        }
+      } catch (e) {
+        openSetAsideModal(m.id, m.card_id, m.person_id, m.amount);
+      }
     }
   }
 }
@@ -1064,8 +1098,9 @@ async function renderMovements() {
   tbody.innerHTML = '';
 
   const filtered = movs.filter(m => {
-    if (cardFilter !== 'all' && m.card_id !== cardFilter) return false;
-    if (personFilter !== 'all' && m.person_id !== personFilter) return false;
+    if (cardFilter !== 'all' && String(m.card_id) !== String(cardFilter)) return false;
+    if (personFilter !== 'all' && String(m.person_id) !== String(personFilter)) return false;
+    if (m.status === 'pagado') return false; // Liquidado 100% no estorba visualmente
     return true;
   });
 
@@ -1788,6 +1823,126 @@ async function loadDbInfo() {
   }
 }
 
+async function syncPhysicalDbFile() {
+  try {
+    if (window.activeDbFileHandle && typeof window.activeDbFileHandle.createWritable === 'function') {
+      const res = await fetch('/api/database/download');
+      if (res.ok) {
+        const blob = await res.blob();
+        const writable = await window.activeDbFileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        console.log("💾 Archivo físico sincronizado en disco local");
+      }
+    } else if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.saveDbFile === 'function') {
+      const res = await fetch('/api/database/download');
+      if (res.ok) {
+        const blob = await res.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const b64 = reader.result.replace(/^data:.*?;base64,/, '');
+          window.AndroidNativeStorage.saveDbFile(b64, 'tarjetas.db');
+          console.log("💾 Archivo físico sincronizado en Android");
+        };
+        reader.readAsDataURL(blob);
+      }
+    }
+  } catch (e) {
+    console.warn("Aviso en syncPhysicalDbFile:", e);
+  }
+}
+
+function storeDbHandle(handle) {
+  try {
+    const req = indexedDB.open('CardMasterFS', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+    req.onsuccess = e => {
+      const db = e.target.result;
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').put(handle, 'activeDb');
+    };
+  } catch(e) {}
+}
+
+async function getStoredDbHandle() {
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open('CardMasterFS', 1);
+      req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+      req.onsuccess = e => {
+        const db = e.target.result;
+        const tx = db.transaction('handles', 'readonly');
+        const getReq = tx.objectStore('handles').get('activeDb');
+        getReq.onsuccess = () => resolve(getReq.result || null);
+        getReq.onerror = () => resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    } catch(e) { resolve(null); }
+  });
+}
+
+async function initPhysicalStorage() {
+  // 1. Android Native Storage (Capacitor)
+  if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.hasDbFile === 'function') {
+    try {
+      if (window.AndroidNativeStorage.hasDbFile('tarjetas.db')) {
+        const b64 = window.AndroidNativeStorage.loadDbFile('tarjetas.db');
+        if (b64 && b64.length > 20) {
+          console.log("📱 Auto-cargando base de datos persistente desde Android...");
+          await fetch('/api/database/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dbBase64: b64 })
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Aviso auto-cargando tarjetas.db en Android:", e);
+    }
+  }
+
+  // 2. Reconectar handle de archivo de escritorio si existe en IndexedDB
+  try {
+    const handle = await getStoredDbHandle();
+    if (handle && handle.queryPermission) {
+      const perm = await handle.queryPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        window.activeDbFileHandle = handle;
+      }
+    }
+  } catch (e) {}
+}
+
+async function selectAndLoadDbFile() {
+  if (window.showOpenFilePicker) {
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{
+          description: 'Base de Datos SQLite (*.db, *.sqlite)',
+          accept: { 'application/x-sqlite3': ['.db', '.sqlite', '.sqlite3', '.bd'] }
+        }],
+        multiple: false
+      });
+      if (handle) {
+        window.activeDbFileHandle = handle;
+        storeDbHandle(handle);
+        const file = await handle.getFile();
+        await handleRestoreDb(file);
+        return;
+      }
+    } catch (pickerErr) {
+      if (pickerErr.name === 'AbortError') return;
+      console.warn("showOpenFilePicker cancelado:", pickerErr);
+    }
+  }
+
+  // Fallback para Android o navegadores estándar
+  const authInput = document.getElementById('auth-db-file-input');
+  const regularInput = document.getElementById('db-file-input');
+  const targetInput = (authInput && !authInput.closest('.hidden')) ? authInput : (regularInput || authInput);
+  if (targetInput) targetInput.click();
+}
+
 async function saveDatabaseToLocalDevice() {
   try {
     showToast("Preparando copia de tarjetas.db...", "info");
@@ -1795,7 +1950,6 @@ async function saveDatabaseToLocalDevice() {
     if (!res.ok) throw new Error("No se pudo descargar la base de datos desde el servidor");
     const blob = await res.blob();
 
-    // Intentar abrir el selector nativo del sistema operativo ("Guardar como") si está soportado
     if (window.showSaveFilePicker) {
       try {
         const handle = await window.showSaveFilePicker({
@@ -1808,12 +1962,13 @@ async function saveDatabaseToLocalDevice() {
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
-        showToast("✅ Base de datos guardada en la carpeta seleccionada", "success");
+        window.activeDbFileHandle = handle;
+        storeDbHandle(handle);
+        showToast("✅ Base de datos guardada y vinculada en la carpeta seleccionada", "success");
+        await loadDbInfo();
         return;
       } catch (pickerErr) {
-        if (pickerErr.name === 'AbortError') {
-          return; // El usuario canceló
-        }
+        if (pickerErr.name === 'AbortError') return;
         console.warn("showSaveFilePicker cancelado o no disponible:", pickerErr);
       }
     }
@@ -1841,11 +1996,18 @@ async function handleRestoreDb(file) {
     return;
   }
 
-  showToast(`Cargando y sobreescribiendo con "${file.name}"...`, "info");
+  showToast(`Cargando y vinculando "${file.name}"...`, "info");
   const reader = new FileReader();
   reader.onload = async () => {
     try {
       const base64 = reader.result;
+      const cleanB64 = base64.replace(/^data:.*?;base64,/, '');
+
+      // Guardar inmediatamente en disco permanente de Android si está presente
+      if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.saveDbFile === 'function') {
+        window.AndroidNativeStorage.saveDbFile(cleanB64, 'tarjetas.db');
+      }
+
       const res = await fetch('/api/database/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1853,7 +2015,7 @@ async function handleRestoreDb(file) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al restaurar");
-      showToast("✅ Base de datos sobreescrita con éxito", "success");
+      showToast("✅ Base de datos cargada y vinculada en disco con éxito", "success");
       await checkAuthStatus();
       const errDiv = document.getElementById('auth-error');
       if (errDiv) errDiv.classList.add('hidden');
@@ -2260,7 +2422,7 @@ function setupDragAndDrop() {
   const dropDb = document.getElementById('dropzone-db-restore');
   const inputDb = document.getElementById('db-file-input');
   if (dropDb && inputDb) {
-    dropDb.addEventListener('click', () => inputDb.click());
+    dropDb.addEventListener('click', () => selectAndLoadDbFile());
     ['dragenter', 'dragover'].forEach(ev => dropDb.addEventListener(ev, (e) => { e.preventDefault(); dropDb.classList.add('dragover'); }));
     ['dragleave', 'drop'].forEach(ev => dropDb.addEventListener(ev, (e) => { e.preventDefault(); dropDb.classList.remove('dragover'); }));
     dropDb.addEventListener('drop', (e) => {
@@ -2277,7 +2439,7 @@ function setupDragAndDrop() {
   const btnAuthRestore = document.getElementById('btn-auth-restore-db');
   const inputAuthDb = document.getElementById('auth-db-file-input');
   if (btnAuthRestore && inputAuthDb) {
-    btnAuthRestore.addEventListener('click', () => inputAuthDb.click());
+    btnAuthRestore.addEventListener('click', () => selectAndLoadDbFile());
     inputAuthDb.addEventListener('change', (e) => {
       if (e.target.files[0]) handleRestoreDb(e.target.files[0]);
     });

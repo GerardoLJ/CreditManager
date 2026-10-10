@@ -222,8 +222,108 @@
   }
   initDefaults();
 
+  function uint8ToBase64(bytes) {
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  }
+
+  async function generateSqliteBinary() {
+    const initFn = window.initSqlJs || (typeof initSqlJs !== 'undefined' ? initSqlJs : null);
+    if (!initFn) return null;
+    const SQL = await initFn();
+    const db = new SQL.Database();
+
+    db.run(`CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, name TEXT NOT NULL, credit_limit REAL NOT NULL, cutoff_day INTEGER NOT NULL, color TEXT, logo_base64 TEXT, updated_at INTEGER)`);
+    db.run(`CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, updated_at INTEGER)`);
+    db.run(`CREATE TABLE IF NOT EXISTS movements (id TEXT PRIMARY KEY, concept TEXT NOT NULL, amount REAL NOT NULL, date TEXT NOT NULL, card_id TEXT NOT NULL, person_id TEXT NOT NULL, is_set_aside INTEGER DEFAULT 0, updated_at INTEGER)`);
+    db.run(`CREATE TABLE IF NOT EXISTS installment_plans (id TEXT PRIMARY KEY, concept TEXT NOT NULL, total_amount REAL NOT NULL, months INTEGER NOT NULL, start_date TEXT NOT NULL, card_id TEXT NOT NULL, person_id TEXT NOT NULL, paid_months INTEGER DEFAULT 0, updated_at INTEGER)`);
+    db.run(`CREATE TABLE IF NOT EXISTS set_asides (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, person_id TEXT NOT NULL, movement_id TEXT, amount REAL NOT NULL, fund_type TEXT DEFAULT 'Efectivo', note TEXT, date TEXT NOT NULL, updated_at INTEGER)`);
+    db.run(`CREATE TABLE IF NOT EXISTS budgets (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, updated_at INTEGER)`);
+    db.run(`CREATE TABLE IF NOT EXISTS budget_items (id TEXT PRIMARY KEY, budget_id TEXT NOT NULL, concept TEXT NOT NULL, amount REAL NOT NULL, type TEXT NOT NULL, tag TEXT, updated_at INTEGER)`);
+    db.run(`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)`);
+
+    const cfg = DB.getConfig();
+    Object.entries(cfg).forEach(([k, v]) => {
+      db.run(`INSERT OR REPLACE INTO app_config VALUES (?, ?)`, [k, String(v)]);
+    });
+
+    DB.get('cards').forEach(c => {
+      db.run(`INSERT OR REPLACE INTO cards VALUES (?, ?, ?, ?, ?, ?, ?)`, [c.id, c.name, c.credit_limit, c.cutoff_day, c.color || '#1e293b', c.logo_base64 || null, c.updated_at || Date.now()]);
+    });
+
+    DB.get('people').forEach(p => {
+      db.run(`INSERT OR REPLACE INTO people VALUES (?, ?, ?)`, [p.id, p.name, p.updated_at || Date.now()]);
+    });
+
+    DB.get('movements').forEach(m => {
+      db.run(`INSERT OR REPLACE INTO movements VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [m.id, m.concept, m.amount, m.date, m.card_id, m.person_id, m.is_set_aside || 0, m.updated_at || Date.now()]);
+    });
+
+    DB.get('installment_plans').forEach(i => {
+      db.run(`INSERT OR REPLACE INTO installment_plans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [i.id, i.concept, i.total_amount, i.months, i.start_date, i.card_id, i.person_id, i.paid_months || 0, i.updated_at || Date.now()]);
+    });
+
+    DB.get('set_asides').forEach(s => {
+      db.run(`INSERT OR REPLACE INTO set_asides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [s.id, s.card_id, s.person_id, s.movement_id || null, s.amount, s.fund_type || 'Efectivo', s.note || '', s.date, s.updated_at || Date.now()]);
+    });
+
+    DB.get('budgets').forEach(b => {
+      db.run(`INSERT OR REPLACE INTO budgets VALUES (?, ?, ?, ?)`, [b.id, b.name, b.description || '', b.updated_at || Date.now()]);
+    });
+
+    DB.get('budget_items').forEach(bi => {
+      db.run(`INSERT OR REPLACE INTO budget_items VALUES (?, ?, ?, ?, ?, ?, ?)`, [bi.id, bi.budget_id, bi.concept, bi.amount, bi.type, bi.tag, bi.updated_at || Date.now()]);
+    });
+
+    const binary = db.export();
+    db.close();
+    return binary;
+  }
+
+  async function syncPhysicalStorage() {
+    try {
+      const binary = await generateSqliteBinary();
+      if (!binary) return;
+
+      // 1. Android Native Storage Bridge (Capacitor)
+      if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.saveDbFile === 'function') {
+        const b64 = uint8ToBase64(binary);
+        const savedPath = window.AndroidNativeStorage.saveDbFile(b64, 'tarjetas.db');
+        console.log('💾 [AndroidNativeStorage] Base de datos guardada en archivo persistente:', savedPath);
+      }
+
+      // 2. File System Access API (Desktop / Navegadores modernos)
+      if (window.activeDbFileHandle && typeof window.activeDbFileHandle.createWritable === 'function') {
+        try {
+          const writable = await window.activeDbFileHandle.createWritable();
+          await writable.write(binary);
+          await writable.close();
+          console.log('💾 [FileSystemHandle] Base de datos guardada en archivo físico de disco');
+        } catch (handleErr) {
+          console.warn('Aviso escribiendo en FileSystemHandle:', handleErr);
+        }
+      }
+    } catch (e) {
+      console.warn('Aviso en syncPhysicalStorage:', e);
+    }
+  }
+
   // --- SIMULADOR DE API DE CARDMASTER ---
   async function handleLocalApi(method, url, body) {
+    const res = await _handleLocalApiInner(method, url, body);
+    const mutatingMethods = ['POST', 'PUT', 'DELETE', 'PATCH'];
+    const path = url.split('?')[0];
+    if (mutatingMethods.includes(method) && !path.startsWith('/api/auth/login') && !path.startsWith('/api/auth/status') && !path.startsWith('/api/auth/check')) {
+      syncPhysicalStorage().catch(e => console.warn('Aviso sincronizando almacenamiento físico:', e));
+    }
+    return res;
+  }
+
+  async function _handleLocalApiInner(method, url, body) {
     const path = url.split('?')[0];
 
     // 1. AUTENTICACIÓN
@@ -385,7 +485,7 @@
         const peopleMap = Object.fromEntries(people.map(p => [p.id, p.name]));
 
         const enriched = movs.map(m => {
-          const movAsides = asides.filter(s => s.movement_id === m.id);
+          const movAsides = asides.filter(s => String(s.movement_id) === String(m.id));
           const totalSetAside = movAsides.reduce((acc, s) => acc + (parseFloat(s.amount) || 0), 0);
           const totalPaid = movAsides.reduce((acc, s) => {
             const pAmt = parseFloat(s.paid_amount);
@@ -623,18 +723,58 @@
     if (path.match(/^\/api\/set-asides\/([^/]+)\/pay$/)) {
       const asideId = path.split('/')[3];
       const asides = DB.get('set_asides');
-      const idx = asides.findIndex(s => s.id === asideId);
+      const idx = asides.findIndex(s => String(s.id) === String(asideId));
       if (idx >= 0) {
+        const row = asides[idx];
         const targetAmount = (body.paid_amount !== undefined && body.paid_amount !== null && !isNaN(parseFloat(body.paid_amount)))
-          ? Math.min(asides[idx].amount, parseFloat(body.paid_amount))
-          : asides[idx].amount;
-        const isFull = targetAmount >= asides[idx].amount;
-        asides[idx].paid_amount = targetAmount;
-        asides[idx].is_paid = isFull ? 1 : 0;
-        asides[idx].status = isFull ? 'pagado' : 'pago_parcial';
-        asides[idx].updated_at = Date.now();
-        DB.set('set_asides', asides);
-        return { success: true, status: asides[idx].status, paid_amount: targetAmount, is_paid: asides[idx].is_paid };
+          ? Math.min(row.amount, parseFloat(body.paid_amount))
+          : row.amount;
+        const isFull = targetAmount >= (row.amount - 0.001);
+
+        const movs = DB.get('movements');
+
+        if (isFull) {
+          // Liquidación 100%: borrar movimiento y borrar apartado para liberar crédito por completo
+          if (row.movement_id) {
+            const mIdx = movs.findIndex(m => String(m.id) === String(row.movement_id));
+            if (mIdx >= 0) movs.splice(mIdx, 1);
+          } else {
+            const mIdx = movs.findIndex(m => String(m.card_id) === String(row.card_id) && String(m.person_id) === String(row.person_id) && Math.abs(m.amount - row.amount) < 0.01);
+            if (mIdx >= 0) movs.splice(mIdx, 1);
+          }
+          DB.set('movements', movs);
+
+          // Borrar apartado liquidado
+          asides.splice(idx, 1);
+          DB.set('set_asides', asides);
+
+          await syncPhysicalStorage();
+          return { success: true, fully_settled: true, amount_paid: targetAmount };
+        } else {
+          // Pago parcial: reducir del movimiento y del apartado
+          const newAmount = Math.max(0, row.amount - targetAmount);
+          if (row.movement_id) {
+            const mIdx = movs.findIndex(m => String(m.id) === String(row.movement_id));
+            if (mIdx >= 0) {
+              movs[mIdx].amount = Math.max(0, movs[mIdx].amount - targetAmount);
+              movs[mIdx].updated_at = Date.now();
+            }
+          } else {
+            const mIdx = movs.findIndex(m => String(m.card_id) === String(row.card_id) && String(m.person_id) === String(row.person_id));
+            if (mIdx >= 0) {
+              movs[mIdx].amount = Math.max(0, movs[mIdx].amount - targetAmount);
+              movs[mIdx].updated_at = Date.now();
+            }
+          }
+          DB.set('movements', movs);
+
+          asides[idx].amount = newAmount;
+          asides[idx].updated_at = Date.now();
+          DB.set('set_asides', asides);
+
+          await syncPhysicalStorage();
+          return { success: true, fully_settled: false, remaining: newAmount, amount_paid: targetAmount };
+        }
       }
       return { status: 404, error: 'Apartado no encontrado' };
     }
@@ -859,10 +999,19 @@
 
     // 10. INFORMACIÓN DE BASE DE DATOS
     if (path === '/api/database/info') {
+      let activePath = 'Base de datos privada del dispositivo';
+      let statusDesc = 'Almacenamiento Local (Memoria del Teléfono)';
+      if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.getDbFilePath === 'function') {
+        activePath = window.AndroidNativeStorage.getDbFilePath('tarjetas.db') || activePath;
+        statusDesc = 'Disco Físico Android (tarjetas.db)';
+      } else if (window.activeDbFileHandle && window.activeDbFileHandle.name) {
+        activePath = 'Archivo vinculado: ' + window.activeDbFileHandle.name;
+        statusDesc = 'Disco Local Vinculado';
+      }
       return {
         exists: true,
-        sizeFormatted: 'Almacenamiento Local (Memoria del Teléfono)',
-        dbPath: 'Base de datos privada del dispositivo',
+        sizeFormatted: statusDesc,
+        dbPath: activePath,
         isDocker: false
       };
     }
@@ -987,6 +1136,8 @@
 
         db.close();
 
+        await syncPhysicalStorage();
+
         return { success: true, message: 'Base de datos tarjetas.db restaurada exitosamente' };
       } catch (err) {
         console.error('Error restaurando tarjetas.db:', err);
@@ -997,55 +1148,8 @@
     // 12. DESCARGA / EXPORTACIÓN DE BASE DE DATOS FÍSICA SQLite (.db)
     if (path === '/api/database/download' && method === 'GET') {
       try {
-        const initFn = window.initSqlJs || (typeof initSqlJs !== 'undefined' ? initSqlJs : null);
-        if (!initFn) return { status: 500, error: 'sql-asm.js no disponible' };
-        const SQL = await initFn();
-        const db = new SQL.Database();
-
-        db.run(`CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, name TEXT NOT NULL, credit_limit REAL NOT NULL, cutoff_day INTEGER NOT NULL, color TEXT, logo_base64 TEXT, updated_at INTEGER)`);
-        db.run(`CREATE TABLE IF NOT EXISTS people (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, updated_at INTEGER)`);
-        db.run(`CREATE TABLE IF NOT EXISTS movements (id TEXT PRIMARY KEY, concept TEXT NOT NULL, amount REAL NOT NULL, date TEXT NOT NULL, card_id TEXT NOT NULL, person_id TEXT NOT NULL, is_set_aside INTEGER DEFAULT 0, updated_at INTEGER)`);
-        db.run(`CREATE TABLE IF NOT EXISTS installment_plans (id TEXT PRIMARY KEY, concept TEXT NOT NULL, total_amount REAL NOT NULL, months INTEGER NOT NULL, start_date TEXT NOT NULL, card_id TEXT NOT NULL, person_id TEXT NOT NULL, paid_months INTEGER DEFAULT 0, updated_at INTEGER)`);
-        db.run(`CREATE TABLE IF NOT EXISTS set_asides (id TEXT PRIMARY KEY, card_id TEXT NOT NULL, person_id TEXT NOT NULL, movement_id TEXT, amount REAL NOT NULL, fund_type TEXT DEFAULT 'Efectivo', note TEXT, date TEXT NOT NULL, updated_at INTEGER)`);
-        db.run(`CREATE TABLE IF NOT EXISTS budgets (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT, updated_at INTEGER)`);
-        db.run(`CREATE TABLE IF NOT EXISTS budget_items (id TEXT PRIMARY KEY, budget_id TEXT NOT NULL, concept TEXT NOT NULL, amount REAL NOT NULL, type TEXT NOT NULL, tag TEXT, updated_at INTEGER)`);
-        db.run(`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)`);
-
-        const cfg = DB.getConfig();
-        Object.entries(cfg).forEach(([k, v]) => {
-          db.run(`INSERT OR REPLACE INTO app_config VALUES (?, ?)`, [k, String(v)]);
-        });
-
-        DB.get('cards').forEach(c => {
-          db.run(`INSERT OR REPLACE INTO cards VALUES (?, ?, ?, ?, ?, ?, ?)`, [c.id, c.name, c.credit_limit, c.cutoff_day, c.color || '#1e293b', c.logo_base64 || null, c.updated_at || Date.now()]);
-        });
-
-        DB.get('people').forEach(p => {
-          db.run(`INSERT OR REPLACE INTO people VALUES (?, ?, ?)`, [p.id, p.name, p.updated_at || Date.now()]);
-        });
-
-        DB.get('movements').forEach(m => {
-          db.run(`INSERT OR REPLACE INTO movements VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [m.id, m.concept, m.amount, m.date, m.card_id, m.person_id, m.is_set_aside || 0, m.updated_at || Date.now()]);
-        });
-
-        DB.get('installment_plans').forEach(i => {
-          db.run(`INSERT OR REPLACE INTO installment_plans VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [i.id, i.concept, i.total_amount, i.months, i.start_date, i.card_id, i.person_id, i.paid_months || 0, i.updated_at || Date.now()]);
-        });
-
-        DB.get('set_asides').forEach(s => {
-          db.run(`INSERT OR REPLACE INTO set_asides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [s.id, s.card_id, s.person_id, s.movement_id || null, s.amount, s.fund_type || 'Efectivo', s.note || '', s.date, s.updated_at || Date.now()]);
-        });
-
-        DB.get('budgets').forEach(b => {
-          db.run(`INSERT OR REPLACE INTO budgets VALUES (?, ?, ?, ?)`, [b.id, b.name, b.description || '', b.updated_at || Date.now()]);
-        });
-
-        DB.get('budget_items').forEach(bi => {
-          db.run(`INSERT OR REPLACE INTO budget_items VALUES (?, ?, ?, ?, ?, ?, ?)`, [bi.id, bi.budget_id, bi.concept, bi.amount, bi.type, bi.tag, bi.updated_at || Date.now()]);
-        });
-
-        const binary = db.export();
-        db.close();
+        const binary = await generateSqliteBinary();
+        if (!binary) return { status: 500, error: 'Error generando binario SQLite' };
         return { isBinaryBlob: true, binaryData: binary };
       } catch (err) {
         return { status: 500, error: 'Error exportando base de datos: ' + err.message };
@@ -1142,6 +1246,25 @@
     // Peticiones estándar de archivos estáticos o red normal
     return _realFetch.call(this, input, init);
   };
+
+  // Auto-cargar base de datos física persistente desde Android si existe en disco
+  if (typeof window !== 'undefined') {
+    setTimeout(async () => {
+      if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.hasDbFile === 'function') {
+        try {
+          if (window.AndroidNativeStorage.hasDbFile('tarjetas.db')) {
+            const b64 = window.AndroidNativeStorage.loadDbFile('tarjetas.db');
+            if (b64 && b64.length > 20) {
+              console.log('📱 Auto-sincronizando tarjetas.db persistente en Android...');
+              await handleLocalApi('POST', '/api/database/restore', { dbBase64: b64 });
+            }
+          }
+        } catch (e) {
+          console.warn('Aviso auto-cargando almacenamiento Android:', e);
+        }
+      }
+    }, 100);
+  }
 
   // Exponer API pública en window para depuración y estado
   window.CardMasterEngine = {

@@ -388,23 +388,42 @@ app.delete('/api/set-asides/:id', (req, res) => {
 app.post('/api/set-asides/:id/pay', (req, res) => {
   const id = req.params.id;
   const { paid_amount } = req.body;
-  db.get("SELECT * FROM set_asides WHERE id = ?", [id], (err, row) => {
+  db.get("SELECT * FROM set_asides WHERE id = ? OR CAST(id AS TEXT) = ?", [id, String(id)], (err, row) => {
     if (err || !row) return res.status(404).json({ error: 'Apartado no encontrado' });
     const targetAmount = (paid_amount !== undefined && paid_amount !== null && !isNaN(parseFloat(paid_amount)))
       ? Math.min(row.amount, parseFloat(paid_amount))
       : row.amount;
-    const isFull = targetAmount >= row.amount;
-    const newStatus = isFull ? 'pagado' : 'pago_parcial';
-    const isPaid = isFull ? 1 : 0;
+    const isFull = targetAmount >= (row.amount - 0.001);
     const now = Date.now();
 
-    db.run(`UPDATE set_asides SET paid_amount = ?, is_paid = ?, status = ?, updated_at = ? WHERE id = ?`,
-      [targetAmount, isPaid, newStatus, now, id],
-      function(uErr) {
-        if (uErr) return res.status(500).json({ error: uErr.message });
-        res.json({ success: true, status: newStatus, paid_amount: targetAmount, is_paid: isPaid });
-      }
-    );
+    if (isFull) {
+      // 100% liquidado: eliminar movimiento y eliminar apartado
+      db.serialize(() => {
+        if (row.movement_id) {
+          db.run("DELETE FROM movements WHERE id = ? OR CAST(id AS TEXT) = ?", [row.movement_id, String(row.movement_id)]);
+        } else {
+          db.run("DELETE FROM movements WHERE id IN (SELECT id FROM movements WHERE (card_id = ? OR CAST(card_id AS TEXT) = ?) AND (person_id = ? OR CAST(person_id AS TEXT) = ?) AND ABS(amount - ?) < 0.01 LIMIT 1)", [row.card_id, String(row.card_id), row.person_id, String(row.person_id), row.amount]);
+        }
+        db.run("DELETE FROM set_asides WHERE id = ? OR CAST(id AS TEXT) = ?", [id, String(id)], function(delErr) {
+          if (delErr) return res.status(500).json({ error: delErr.message });
+          res.json({ success: true, fully_settled: true, amount_paid: targetAmount });
+        });
+      });
+    } else {
+      // Pago parcial: descontar del apartado y del movimiento
+      const newAmount = Math.max(0, row.amount - targetAmount);
+      db.serialize(() => {
+        if (row.movement_id) {
+          db.run("UPDATE movements SET amount = MAX(0, amount - ?), updated_at = ? WHERE id = ? OR CAST(id AS TEXT) = ?", [targetAmount, now, row.movement_id, String(row.movement_id)]);
+        } else {
+          db.run("UPDATE movements SET amount = MAX(0, amount - ?), updated_at = ? WHERE id IN (SELECT id FROM movements WHERE (card_id = ? OR CAST(card_id AS TEXT) = ?) AND (person_id = ? OR CAST(person_id AS TEXT) = ?) LIMIT 1)", [targetAmount, now, row.card_id, String(row.card_id), row.person_id, String(row.person_id)]);
+        }
+        db.run("UPDATE set_asides SET amount = ?, updated_at = ? WHERE id = ? OR CAST(id AS TEXT) = ?", [newAmount, now, id, String(id)], function(upErr) {
+          if (upErr) return res.status(500).json({ error: upErr.message });
+          res.json({ success: true, fully_settled: false, remaining: newAmount, amount_paid: targetAmount });
+        });
+      });
+    }
   });
 });
 
