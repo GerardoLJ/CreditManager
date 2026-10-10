@@ -506,8 +506,8 @@
         const asides = DB.get('set_asides');
         const cards = DB.get('cards');
         const people = DB.get('people');
-        const cardsMap = Object.fromEntries(cards.map(c => [c.id, c.name]));
-        const peopleMap = Object.fromEntries(people.map(p => [p.id, p.name]));
+        const cardsMap = Object.fromEntries(cards.map(c => [String(c.id), c.name]));
+        const peopleMap = Object.fromEntries(people.map(p => [String(p.id), p.name]));
 
         const enriched = asides.map(s => {
           const paidAmount = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
@@ -521,8 +521,8 @@
           }
           return {
             ...s,
-            card_name: cardsMap[s.card_id] || 'Desconocida',
-            person_name: peopleMap[s.person_id] || 'Desconocido',
+            card_name: cardsMap[String(s.card_id)] || 'Desconocida',
+            person_name: peopleMap[String(s.person_id)] || 'Desconocido',
             paid_amount: paidAmount,
             is_paid: s.is_paid ? 1 : 0,
             status
@@ -542,8 +542,8 @@
         const asides = DB.get('set_asides');
         asides.push({
           id,
-          card_id: body.card_id,
-          person_id: body.person_id,
+          card_id: String(body.card_id),
+          person_id: String(body.person_id),
           movement_id: body.movement_id || null,
           amount: numAmount,
           fund_type: fundType,
@@ -567,6 +567,37 @@
         }
         return { success: true, id };
       }
+    }
+
+    if (path.match(/^\/api\/set-asides\/([^/]+)$/) && method === 'PUT') {
+      const asideId = path.split('/')[3];
+      const asides = DB.get('set_asides');
+      const idx = asides.findIndex(s => String(s.id) === String(asideId));
+      if (idx >= 0) {
+        const numAmount = parseFloat(body.amount) || 0;
+        const numPaid = parseFloat(body.paid_amount) || 0;
+        const paidFlag = body.is_paid ? 1 : (numPaid >= numAmount && numAmount > 0 ? 1 : 0);
+        const statusVal = body.status || (paidFlag ? 'pagado' : (numPaid > 0 ? 'pago_parcial' : 'apartado'));
+        const fundType = (body.fund_type === 'Débito' || body.fund_type === 'Debito') ? 'Débito' : 'Efectivo';
+
+        asides[idx] = {
+          ...asides[idx],
+          card_id: String(body.card_id),
+          person_id: String(body.person_id),
+          movement_id: body.movement_id || null,
+          amount: numAmount,
+          fund_type: fundType,
+          note: body.note || '',
+          date: body.date || new Date().toISOString().split('T')[0],
+          is_paid: paidFlag,
+          paid_amount: numPaid,
+          status: statusVal,
+          updated_at: Date.now()
+        };
+        DB.set('set_asides', asides);
+        return { success: true, id: asideId };
+      }
+      return { status: 404, error: 'Apartado no encontrado' };
     }
 
     if (path.match(/^\/api\/set-asides\/([^/]+)$/) && method === 'DELETE') {

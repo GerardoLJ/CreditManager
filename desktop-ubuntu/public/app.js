@@ -83,7 +83,7 @@ function openTransferModal(preselectedCardId = null) {
   document.getElementById('form-transfer-fund').reset();
   const cardSelect = document.getElementById('transfer-card');
   if (preselectedCardId) {
-    cardSelect.value = preselectedCardId;
+    cardSelect.value = String(preselectedCardId);
   }
   updateTransferDestLabel();
   document.getElementById('modal-transfer-fund').classList.remove('hidden');
@@ -429,18 +429,28 @@ async function renderCards() {
   }
 
   for (const card of cardsRes) {
+    const cardIdStr = String(card.id);
+
     // Gastos regulares de esta tarjeta
-    const cardMovs = movsRes.filter(m => m.card_id === card.id);
+    const cardMovs = movsRes.filter(m => String(m.card_id) === cardIdStr);
     const regularSpent = cardMovs.reduce((sum, m) => sum + m.amount, 0);
 
     // MSI pendientes de esta tarjeta
     const msiRes = await fetch(`/api/msi/${card.id}`).then(r => r.json());
     const msiPending = msiRes.reduce((sum, p) => sum + (p.total_amount - (p.total_amount / p.months * p.paid_months)), 0);
 
-    // Apartados y Pagos de esta tarjeta
-    const cardSetAsides = setAsideRes.filter(s => s.card_id === card.id);
-    const cardPaidToBank = cardSetAsides.reduce((sum, s) => sum + (s.paid_amount || (s.is_paid ? s.amount : 0)), 0);
-    const cardInHand = cardSetAsides.reduce((sum, s) => sum + Math.max(0, s.amount - (s.paid_amount || (s.is_paid ? s.amount : 0))), 0);
+    // Apartados y Pagos de esta tarjeta (incluyendo los enlazados a movimientos de esta tarjeta)
+    const cardSetAsides = setAsideRes.filter(s => {
+      if (String(s.card_id) === cardIdStr) return true;
+      if (s.movement_id) {
+        const m = movsRes.find(x => String(x.id) === String(s.movement_id));
+        if (m && String(m.card_id) === cardIdStr) return true;
+      }
+      return false;
+    });
+
+    const cardPaidToBank = cardSetAsides.reduce((sum, s) => sum + (Number(s.paid_amount) || (s.is_paid ? s.amount : 0)), 0);
+    const cardInHand = cardSetAsides.reduce((sum, s) => sum + Math.max(0, s.amount - (Number(s.paid_amount) || (s.is_paid ? s.amount : 0))), 0);
 
     // Deuda real al banco: gastos reducidos por pagos al banco + MSI
     const totalDebt = Math.max(0, (regularSpent - cardPaidToBank) + msiPending);
@@ -450,13 +460,21 @@ async function renderCards() {
     // Desglose de adeudos por persona / deudor para esta tarjeta específica (solo personas que deben > 0)
     const debtorsWithDebt = [];
     peopleRes.forEach(p => {
-      const pMovs = cardMovs.filter(m => m.person_id === p.id).reduce((sum, m) => sum + m.amount, 0);
-      const pMsi = msiRes.filter(item => item.person_id === p.id).reduce((sum, item) => sum + (item.total_amount - (item.total_amount / item.months * item.paid_months)), 0);
+      const pIdStr = String(p.id);
+      const pMovs = cardMovs.filter(m => String(m.person_id) === pIdStr).reduce((sum, m) => sum + m.amount, 0);
+      const pMsi = msiRes.filter(item => String(item.person_id) === pIdStr).reduce((sum, item) => sum + (item.total_amount - (item.total_amount / item.months * item.paid_months)), 0);
       const pConsumed = pMovs + pMsi;
-      const pCovered = cardSetAsides.filter(s => s.person_id === p.id).reduce((sum, s) => sum + s.amount, 0);
+      const pCovered = cardSetAsides.filter(s => {
+        if (String(s.person_id) === pIdStr) return true;
+        if (s.movement_id) {
+          const m = movsRes.find(x => String(x.id) === String(s.movement_id));
+          if (m && String(m.person_id) === pIdStr) return true;
+        }
+        return false;
+      }).reduce((sum, s) => sum + s.amount, 0);
       const pDebt = Math.max(0, pConsumed - pCovered);
-      if (pDebt > 0) {
-        debtorsWithDebt.push({ name: p.name, debt: pDebt });
+      if (pDebt > 0.001) {
+        debtorsWithDebt.push({ id: p.id, name: p.name, debt: pDebt });
       }
     });
 
@@ -683,8 +701,8 @@ async function renderSetAsides() {
   let globalPagado = 0;
 
   cards.forEach(card => {
-    const cardSetAsides = setAsides.filter(s => s.card_id === card.id);
-    const cardPaid = cardSetAsides.reduce((sum, s) => sum + (s.paid_amount || (s.is_paid ? s.amount : 0)), 0);
+    const cardSetAsides = setAsides.filter(s => String(s.card_id) === String(card.id));
+    const cardPaid = cardSetAsides.reduce((sum, s) => sum + (Number(s.paid_amount) || (s.is_paid ? s.amount : 0)), 0);
     
     // Solo contar como "en mano" lo no pagado
     const totalCash = cardSetAsides.filter(s => (s.fund_type !== 'Débito' && s.fund_type !== 'Debito')).reduce((sum, s) => {
@@ -814,6 +832,7 @@ async function renderSetAsides() {
           ${(isFullyPaid || isPartialPaid) ? `
             <button class="btn btn-sm btn-secondary" onclick="unpaySetAside('${s.id}')" title="Deshacer abono al banco">↩️</button>
           ` : ''}
+          <button class="btn btn-sm btn-secondary" onclick="openSetAsideModal(null, null, null, '', '${s.id}')" title="Editar este apartado">✏️</button>
           <button class="btn btn-sm btn-outline-danger" onclick="deleteSetAside('${s.id}')" title="Eliminar este apartado">🗑️</button>
         </div>
       </td>
@@ -918,20 +937,88 @@ async function payMovementFromAside(movId) {
   }
 }
 
-function openSetAsideModal(movId = null, cardId = null, personId = null, defaultAmount = '') {
+async function openSetAsideModal(movId = null, cardId = null, personId = null, defaultAmount = '', asideId = null) {
   document.getElementById('form-setaside').reset();
   document.getElementById('setaside-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('setaside-movement-id').value = movId || '';
+  document.getElementById('setaside-id').value = asideId || '';
 
-  if (cardId) document.getElementById('setaside-card').value = cardId;
-  if (personId) document.getElementById('setaside-person').value = personId;
-  if (defaultAmount) setMoneyInput(document.getElementById('setaside-amount'), defaultAmount);
+  const titleEl = document.getElementById('modal-setaside-title');
+  const submitBtn = document.getElementById('btn-save-setaside-submit');
+
+  if (asideId) {
+    if (titleEl) titleEl.textContent = "✏️ Editar Dinero Apartado";
+    if (submitBtn) submitBtn.textContent = "Guardar Cambios";
+
+    try {
+      const asides = await fetch('/api/set-asides').then(r => r.json());
+      const s = asides.find(x => String(x.id) === String(asideId));
+      if (s) {
+        if (s.card_id) document.getElementById('setaside-card').value = String(s.card_id);
+        if (s.person_id) document.getElementById('setaside-person').value = String(s.person_id);
+        document.getElementById('setaside-fund-type').value = (s.fund_type === 'Débito' || s.fund_type === 'Debito') ? 'Débito' : 'Efectivo';
+        document.getElementById('setaside-date').value = s.date || new Date().toISOString().split('T')[0];
+        document.getElementById('setaside-note').value = s.note || '';
+        document.getElementById('setaside-movement-id').value = s.movement_id || '';
+        setMoneyInput(document.getElementById('setaside-amount'), s.amount);
+      }
+    } catch (err) {
+      console.error("Error cargando apartado para edición:", err);
+    }
+  } else {
+    if (titleEl) titleEl.textContent = "💰 Registrar Dinero Apartado";
+    if (submitBtn) submitBtn.textContent = "Confirmar Apartado";
+
+    // Si viene de un movimiento, asegurar tarjeta y persona
+    if (movId && (!cardId || !personId)) {
+      try {
+        const movs = await fetch('/api/movements').then(r => r.json());
+        const m = movs.find(x => String(x.id) === String(movId));
+        if (m) {
+          if (!cardId) cardId = m.card_id;
+          if (!personId) personId = m.person_id;
+          if (!defaultAmount) defaultAmount = m.amount;
+        }
+      } catch (e) {}
+    }
+
+    // Si viene con personId pero sin cardId (ej: abierto desde deudores):
+    // buscar automáticamente la tarjeta en la que esta persona tenga adeudo pendiente
+    if (personId && !cardId) {
+      try {
+        const [movs, setAsides] = await Promise.all([
+          fetch('/api/movements').then(r => r.json()),
+          fetch('/api/set-asides').then(r => r.json())
+        ]);
+        const pMovs = movs.filter(m => String(m.person_id) === String(personId));
+        const pAsides = setAsides.filter(s => String(s.person_id) === String(personId));
+        const debtMap = {};
+        pMovs.forEach(m => {
+          debtMap[m.card_id] = (debtMap[m.card_id] || 0) + m.amount;
+        });
+        pAsides.forEach(s => {
+          if (s.card_id && debtMap[s.card_id]) {
+            debtMap[s.card_id] = Math.max(0, debtMap[s.card_id] - s.amount);
+          }
+        });
+        const firstDebtCard = Object.keys(debtMap).find(cId => debtMap[cId] > 0);
+        if (firstDebtCard) {
+          cardId = firstDebtCard;
+        }
+      } catch (e) {}
+    }
+
+    if (cardId) document.getElementById('setaside-card').value = String(cardId);
+    if (personId) document.getElementById('setaside-person').value = String(personId);
+    if (defaultAmount) setMoneyInput(document.getElementById('setaside-amount'), defaultAmount);
+  }
 
   document.getElementById('modal-setaside').classList.remove('hidden');
 }
 
 async function handleSaveSetAside(e) {
   e.preventDefault();
+  const asideId = document.getElementById('setaside-id').value;
   const payload = {
     card_id: document.getElementById('setaside-card').value,
     person_id: document.getElementById('setaside-person').value,
@@ -942,15 +1029,30 @@ async function handleSaveSetAside(e) {
     date: document.getElementById('setaside-date').value
   };
 
-  await fetch('/api/set-asides', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  try {
+    if (asideId) {
+      const res = await fetch(`/api/set-asides/${asideId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Error al actualizar apartado");
+      showToast("Apartado actualizado con éxito", "success");
+    } else {
+      const res = await fetch('/api/set-asides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Error al registrar apartado");
+      showToast("Dinero apartado registrado con éxito", "success");
+    }
 
-  document.getElementById('modal-setaside').classList.add('hidden');
-  refreshAllData();
-  showToast("Dinero apartado registrado con éxito", "success");
+    document.getElementById('modal-setaside').classList.add('hidden');
+    await refreshAllData();
+  } catch (err) {
+    showToast(err.message || "Error al guardar apartado", "error");
+  }
 }
 
 // --- MOVIMIENTOS ---
@@ -1094,8 +1196,16 @@ async function renderDebts() {
   container.innerHTML = '';
 
   people.forEach(p => {
-    const personMovs = movs.filter(m => m.person_id === p.id);
-    const personSetAsides = setAsides.filter(s => s.person_id === p.id);
+    const pIdStr = String(p.id);
+    const personMovs = movs.filter(m => String(m.person_id) === pIdStr);
+    const personSetAsides = setAsides.filter(s => {
+      if (String(s.person_id) === pIdStr) return true;
+      if (s.movement_id) {
+        const m = movs.find(x => String(x.id) === String(s.movement_id));
+        if (m && String(m.person_id) === pIdStr) return true;
+      }
+      return false;
+    });
 
     const totalSpent = personMovs.reduce((sum, m) => sum + m.amount, 0);
     const totalApartado = personSetAsides.reduce((sum, s) => sum + s.amount, 0);
@@ -1103,13 +1213,24 @@ async function renderDebts() {
 
     const cardBreakdown = [];
     cards.forEach(c => {
-      const cMovs = personMovs.filter(m => m.card_id === c.id).reduce((sum, m) => sum + m.amount, 0);
-      const cSetAside = personSetAsides.filter(s => s.card_id === c.id).reduce((sum, s) => sum + s.amount, 0);
+      const cIdStr = String(c.id);
+      const cMovs = personMovs.filter(m => String(m.card_id) === cIdStr).reduce((sum, m) => sum + m.amount, 0);
+      const cSetAside = personSetAsides.filter(s => {
+        if (String(s.card_id) === cIdStr) return true;
+        if (s.movement_id) {
+          const m = movs.find(x => String(x.id) === String(s.movement_id));
+          if (m && String(m.card_id) === cIdStr) return true;
+        }
+        return false;
+      }).reduce((sum, s) => sum + s.amount, 0);
       const cPending = Math.max(0, cMovs - cSetAside);
       if (cMovs > 0) {
-        cardBreakdown.push({ name: c.name, spent: cMovs, apartado: cSetAside, pending: cPending });
+        cardBreakdown.push({ id: c.id, name: c.name, spent: cMovs, apartado: cSetAside, pending: cPending });
       }
     });
+
+    const firstDebtCard = cardBreakdown.find(b => b.pending > 0.001);
+    const defaultCardId = firstDebtCard ? firstDebtCard.id : (cards[0] ? cards[0].id : '');
 
     const box = document.createElement('div');
     box.className = 'debt-card';
@@ -1132,13 +1253,21 @@ async function renderDebts() {
       <ul class="debt-breakdown-list">
         ${cardBreakdown.length > 0 ? cardBreakdown.map(b => `
           <li>
-            <span>${escapeHtml(b.name)}</span>
-            <span>$${b.spent.toLocaleString()} (Apartado: $${b.apartado.toLocaleString()}) &rarr; <strong>$${b.pending.toLocaleString()}</strong></span>
+            <div class="debt-breakdown-info">
+              <strong>${escapeHtml(b.name)}</strong>
+              <span class="small text-muted">Gastado: $${b.spent.toLocaleString()} | Apartado: $${b.apartado.toLocaleString()}</span>
+              <span class="debt-breakdown-pending">Pendiente: <strong>$${b.pending.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
+            </div>
+            ${b.pending > 0.001 ? `
+              <button class="btn btn-sm btn-secondary" onclick="openSetAsideModal(null, '${b.id}', '${p.id}', '${b.pending}')" title="Apartar para ${escapeHtml(b.name)}">
+                💰 Apartar ($${b.pending.toLocaleString()})
+              </button>
+            ` : '<span class="status-badge pagado" style="font-size: 0.72rem;">Al día</span>'}
           </li>
         `).join('') : '<li class="text-muted">Sin adeudos pendientes</li>'}
       </ul>
       <div style="display:flex; justify-content: flex-end; gap:8px; margin-top: 12px;">
-        <button class="btn btn-sm btn-secondary" onclick="openSetAsideModal(null, null, '${p.id}', '${pendingToCollect}')">💰 + Recibir / Apartar</button>
+        <button class="btn btn-sm btn-secondary" onclick="openSetAsideModal(null, '${defaultCardId}', '${p.id}', '${pendingToCollect}')">💰 + Recibir / Apartar</button>
         ${p.name !== 'Personal' ? `<button class="btn btn-sm btn-outline-danger" onclick="deletePerson('${p.id}')">Eliminar</button>` : ''}
       </div>
     `;

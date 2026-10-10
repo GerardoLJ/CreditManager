@@ -39,7 +39,7 @@ let db = new sqlite3.Database(DB_PATH, (err) => {
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Inicializar tablas
 function initDbSchema() {
@@ -213,11 +213,11 @@ app.delete('/api/people/:id', (req, res) => {
 
 // Movimientos
 app.get('/api/movements', (req, res) => {
-  db.all(`SELECT m.*, c.name as card_name, p.name as person_name,
+  db.all(`SELECT m.*, COALESCE(c.name, 'Desconocida') as card_name, COALESCE(p.name, 'Desconocido') as person_name,
           COALESCE((SELECT SUM(s.amount) FROM set_asides s WHERE s.movement_id = m.id), 0) as total_set_aside,
           COALESCE((SELECT SUM(COALESCE(s.paid_amount, CASE WHEN s.is_paid = 1 THEN s.amount ELSE 0 END)) FROM set_asides s WHERE s.movement_id = m.id), 0) as total_paid
           FROM movements m
-          JOIN cards c ON m.card_id = c.id JOIN people p ON m.person_id = p.id
+          LEFT JOIN cards c ON m.card_id = c.id LEFT JOIN people p ON m.person_id = p.id
           ORDER BY m.date DESC`, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     const formatted = (rows || []).map(m => {
@@ -323,8 +323,8 @@ app.post('/api/set-asides', (req, res) => {
 });
 
 app.get('/api/set-asides', (req, res) => {
-  db.all(`SELECT s.*, c.name as card_name, p.name as person_name FROM set_asides s
-          JOIN cards c ON s.card_id = c.id JOIN people p ON s.person_id = p.id
+  db.all(`SELECT s.*, COALESCE(c.name, 'Desconocida') as card_name, COALESCE(p.name, 'Desconocido') as person_name FROM set_asides s
+          LEFT JOIN cards c ON s.card_id = c.id LEFT JOIN people p ON s.person_id = p.id
           ORDER BY s.date DESC`, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     const formatted = (rows || []).map(s => {
@@ -346,6 +346,25 @@ app.get('/api/set-asides', (req, res) => {
     });
     res.json(formatted);
   });
+});
+
+app.put('/api/set-asides/:id', (req, res) => {
+  const id = req.params.id;
+  const { card_id, person_id, movement_id, amount, fund_type, note, date, is_paid, paid_amount, status } = req.body;
+  const numAmount = parseFloat(amount) || 0;
+  const numPaid = parseFloat(paid_amount) || 0;
+  const paidFlag = is_paid ? 1 : (numPaid >= numAmount && numAmount > 0 ? 1 : 0);
+  const statusVal = status || (paidFlag ? 'pagado' : (numPaid > 0 ? 'pago_parcial' : 'apartado'));
+  const typeVal = (fund_type === 'Débito' || fund_type === 'Debito') ? 'Débito' : 'Efectivo';
+  const now = Date.now();
+
+  db.run(`UPDATE set_asides SET card_id = ?, person_id = ?, movement_id = ?, amount = ?, fund_type = ?, note = ?, date = ?, is_paid = ?, paid_amount = ?, status = ?, updated_at = ? WHERE id = ?`,
+    [card_id, person_id, movement_id || null, numAmount, typeVal, note || '', date || new Date().toISOString().split('T')[0], paidFlag, numPaid, statusVal, now, id],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true, id });
+    }
+  );
 });
 
 app.delete('/api/set-asides/:id', (req, res) => {
@@ -716,27 +735,9 @@ app.post('/api/set-asides/transfer', (req, res) => {
 
 const HOST = process.env.HOST || '0.0.0.0';
 
-function getLocalIp() {
-  const os = require('os');
-  const nets = os.networkInterfaces();
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
-      if (net.family === 'IPv4' && !net.internal) {
-        return net.address;
-      }
-    }
-  }
-  return null;
-}
-
 app.listen(PORT, HOST, () => {
-  const ip = getLocalIp();
   console.log(`=======================================================`);
-  console.log(`🚀 CardMaster Web App iniciado exitosamente!`);
-  console.log(`💻 En esta computadora abre:   http://localhost:${PORT}`);
-  if (ip) {
-    console.log(`📱 En tu iPhone/iPad/otros:   http://${ip}:${PORT}`);
-  }
-  console.log(`📁 Base de datos activa en:    ${DB_PATH}`);
+  console.log(`🚀 CardMaster Backend listo en: http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
+  console.log(`📁 Base de datos activa en: ${DB_PATH}`);
   console.log(`=======================================================`);
 });
