@@ -76,6 +76,9 @@ function initDbSchema() {
     db.run("ALTER TABLE set_asides ADD COLUMN fund_type TEXT DEFAULT 'Efectivo'", (err) => {
       // Si ya existe la columna, no hace nada
     });
+    db.run("ALTER TABLE set_asides ADD COLUMN is_paid INTEGER DEFAULT 0", (err) => {});
+    db.run("ALTER TABLE set_asides ADD COLUMN paid_amount REAL DEFAULT 0", (err) => {});
+    db.run("ALTER TABLE set_asides ADD COLUMN status TEXT DEFAULT 'apartado'", (err) => {});
 
     db.run(`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)`);
 
@@ -210,9 +213,35 @@ app.delete('/api/people/:id', (req, res) => {
 
 // Movimientos
 app.get('/api/movements', (req, res) => {
-  db.all(`SELECT m.*, c.name as card_name, p.name as person_name FROM movements m
+  db.all(`SELECT m.*, c.name as card_name, p.name as person_name,
+          COALESCE((SELECT SUM(s.amount) FROM set_asides s WHERE s.movement_id = m.id), 0) as total_set_aside,
+          COALESCE((SELECT SUM(COALESCE(s.paid_amount, CASE WHEN s.is_paid = 1 THEN s.amount ELSE 0 END)) FROM set_asides s WHERE s.movement_id = m.id), 0) as total_paid
+          FROM movements m
           JOIN cards c ON m.card_id = c.id JOIN people p ON m.person_id = p.id
-          ORDER BY m.date DESC`, (err, rows) => res.json(rows || []));
+          ORDER BY m.date DESC`, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const formatted = (rows || []).map(m => {
+      const setAsideAmt = Number(m.total_set_aside) || 0;
+      const paidAmt = Number(m.total_paid) || 0;
+      let status = 'gastado';
+      if (paidAmt >= m.amount && m.amount > 0) {
+        status = 'pagado';
+      } else if (paidAmt > 0) {
+        status = 'pago_parcial';
+      } else if (setAsideAmt >= m.amount && m.amount > 0) {
+        status = 'apartado';
+      } else if (setAsideAmt > 0) {
+        status = 'apartado_parcial';
+      }
+      return {
+        ...m,
+        total_set_aside: setAsideAmt,
+        total_paid: paidAmt,
+        status
+      };
+    });
+    res.json(formatted);
+  });
 });
 
 app.post('/api/movements', (req, res) => {
@@ -260,30 +289,115 @@ app.post('/api/movements/:id/update', (req, res) => {
 });
 
 app.delete('/api/movements/:id', (req, res) => {
-  db.run("DELETE FROM movements WHERE id = ?", [req.params.id], () => res.json({ success: true }));
+  const movId = req.params.id;
+  db.serialize(() => {
+    db.run("DELETE FROM set_asides WHERE movement_id = ?", [movId]);
+    db.run("DELETE FROM movements WHERE id = ?", [movId], () => res.json({ success: true }));
+  });
 });
 
 // Apartados
 app.post('/api/set-asides', (req, res) => {
-  const { card_id, person_id, movement_id, amount, fund_type, note, date } = req.body;
+  const { card_id, person_id, movement_id, amount, fund_type, note, date, paid_amount, is_paid, status } = req.body;
   const id = crypto.randomUUID();
   const now = Date.now();
   const typeVal = (fund_type === 'Débito' || fund_type === 'Debito') ? 'Débito' : 'Efectivo';
+  const numAmount = parseFloat(amount) || 0;
+  const numPaid = parseFloat(paid_amount) || 0;
+  const paidFlag = is_paid ? 1 : (numPaid >= numAmount && numAmount > 0 ? 1 : 0);
+  const statusVal = status || (paidFlag ? 'pagado' : (numPaid > 0 ? 'pago_parcial' : 'apartado'));
+
   db.serialize(() => {
-    db.run(`INSERT INTO set_asides (id, card_id, person_id, movement_id, amount, fund_type, note, date, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, card_id, person_id, movement_id || null, amount, typeVal, note || '', date || new Date().toISOString().split('T')[0], now]);
-    if (movement_id) {
-      db.run("UPDATE movements SET is_set_aside = 1, updated_at = ? WHERE id = ?", [now, movement_id]);
-    }
-    res.json({ success: true, id });
+    db.run(`INSERT INTO set_asides (id, card_id, person_id, movement_id, amount, fund_type, note, date, is_paid, paid_amount, status, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, card_id, person_id, movement_id || null, numAmount, typeVal, note || '', date || new Date().toISOString().split('T')[0], paidFlag, numPaid, statusVal, now],
+      function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        if (movement_id) {
+          db.run("UPDATE movements SET is_set_aside = 1, updated_at = ? WHERE id = ?", [now, movement_id]);
+        }
+        res.json({ success: true, id });
+      }
+    );
   });
 });
 
 app.get('/api/set-asides', (req, res) => {
   db.all(`SELECT s.*, c.name as card_name, p.name as person_name FROM set_asides s
           JOIN cards c ON s.card_id = c.id JOIN people p ON s.person_id = p.id
-          ORDER BY s.date DESC`, (err, rows) => res.json(rows || []));
+          ORDER BY s.date DESC`, (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    const formatted = (rows || []).map(s => {
+      const paidAmount = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
+      let status = s.status || 'apartado';
+      if (paidAmount >= s.amount && s.amount > 0) {
+        status = 'pagado';
+      } else if (paidAmount > 0) {
+        status = 'pago_parcial';
+      } else {
+        status = 'apartado';
+      }
+      return {
+        ...s,
+        paid_amount: paidAmount,
+        is_paid: s.is_paid ? 1 : 0,
+        status
+      };
+    });
+    res.json(formatted);
+  });
+});
+
+app.delete('/api/set-asides/:id', (req, res) => {
+  const id = req.params.id;
+  db.get("SELECT movement_id FROM set_asides WHERE id = ?", [id], (err, row) => {
+    const movId = row ? row.movement_id : null;
+    db.run("DELETE FROM set_asides WHERE id = ?", [id], function(delErr) {
+      if (delErr) return res.status(500).json({ error: delErr.message });
+      if (movId) {
+        db.get("SELECT COUNT(*) as count FROM set_asides WHERE movement_id = ?", [movId], (mErr, mRow) => {
+          const hasRemaining = mRow && mRow.count > 0;
+          db.run("UPDATE movements SET is_set_aside = ?, updated_at = ? WHERE id = ?",
+            [hasRemaining ? 1 : 0, Date.now(), movId]);
+        });
+      }
+      res.json({ success: true });
+    });
+  });
+});
+
+app.post('/api/set-asides/:id/pay', (req, res) => {
+  const id = req.params.id;
+  const { paid_amount } = req.body;
+  db.get("SELECT * FROM set_asides WHERE id = ?", [id], (err, row) => {
+    if (err || !row) return res.status(404).json({ error: 'Apartado no encontrado' });
+    const targetAmount = (paid_amount !== undefined && paid_amount !== null && !isNaN(parseFloat(paid_amount)))
+      ? Math.min(row.amount, parseFloat(paid_amount))
+      : row.amount;
+    const isFull = targetAmount >= row.amount;
+    const newStatus = isFull ? 'pagado' : 'pago_parcial';
+    const isPaid = isFull ? 1 : 0;
+    const now = Date.now();
+
+    db.run(`UPDATE set_asides SET paid_amount = ?, is_paid = ?, status = ?, updated_at = ? WHERE id = ?`,
+      [targetAmount, isPaid, newStatus, now, id],
+      function(uErr) {
+        if (uErr) return res.status(500).json({ error: uErr.message });
+        res.json({ success: true, status: newStatus, paid_amount: targetAmount, is_paid: isPaid });
+      }
+    );
+  });
+});
+
+app.post('/api/set-asides/:id/unpay', (req, res) => {
+  const id = req.params.id;
+  db.run(`UPDATE set_asides SET paid_amount = 0, is_paid = 0, status = 'apartado', updated_at = ? WHERE id = ?`,
+    [Date.now(), id],
+    function(err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ success: true });
+    }
+  );
 });
 
 // MSI

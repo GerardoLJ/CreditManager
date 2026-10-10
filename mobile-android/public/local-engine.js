@@ -58,39 +58,34 @@
   }
 
   function hmac_sha256_pure(key, message) {
-    const blockSize = 64;
-    let k = new Uint8Array(key);
-    if (k.length > blockSize) k = sha256_bytes_pure(k);
-    if (k.length < blockSize) {
-      const paddedKey = new Uint8Array(blockSize);
-      paddedKey.set(k);
-      k = paddedKey;
+    let k = key;
+    if (k.length > 64) k = sha256_bytes_pure(k);
+    const kPadO = new Uint8Array(64);
+    const kPadI = new Uint8Array(64);
+    for (let i = 0; i < 64; i++) {
+      const b = i < k.length ? k[i] : 0;
+      kPadO[i] = b ^ 0x5c;
+      kPadI[i] = b ^ 0x36;
     }
-    const oKeyPad = new Uint8Array(blockSize);
-    const iKeyPad = new Uint8Array(blockSize);
-    for (let i = 0; i < blockSize; i++) {
-      oKeyPad[i] = k[i] ^ 0x5c;
-      iKeyPad[i] = k[i] ^ 0x36;
-    }
-    const inner = new Uint8Array(blockSize + message.length);
-    inner.set(iKeyPad, 0);
-    inner.set(message, blockSize);
-    const innerHash = sha256_bytes_pure(inner);
-    const outer = new Uint8Array(blockSize + 32);
-    outer.set(oKeyPad, 0);
-    outer.set(innerHash, blockSize);
-    return sha256_bytes_pure(outer);
+    const innerMsg = new Uint8Array(64 + message.length);
+    innerMsg.set(kPadI);
+    innerMsg.set(message, 64);
+    const innerHash = sha256_bytes_pure(innerMsg);
+    const outerMsg = new Uint8Array(64 + 32);
+    outerMsg.set(kPadO);
+    outerMsg.set(innerHash, 64);
+    return sha256_bytes_pure(outerMsg);
   }
 
-  function pbkdf2_sync_pure(password, saltStr, iterations = 100000, keyLen = 32) {
+  function pbkdf2_sync_pure(password, salt, iterations = 100000, keyLen = 32) {
     const enc = new TextEncoder();
     const pwdBytes = enc.encode(password);
-    const saltBytes = enc.encode(saltStr);
+    const saltBytes = enc.encode(salt);
     const numBlocks = Math.ceil(keyLen / 32);
     const result = new Uint8Array(numBlocks * 32);
     for (let b = 1; b <= numBlocks; b++) {
       const initialMsg = new Uint8Array(saltBytes.length + 4);
-      initialMsg.set(saltBytes, 0);
+      initialMsg.set(saltBytes);
       initialMsg[saltBytes.length] = (b >>> 24) & 255;
       initialMsg[saltBytes.length + 1] = (b >>> 16) & 255;
       initialMsg[saltBytes.length + 2] = (b >>> 8) & 255;
@@ -118,7 +113,6 @@
           false,
           ['deriveBits']
         );
-        // Sal como bytes UTF-8 (exactamente como lo interpreta crypto.pbkdf2Sync(pwd, salt, ...))
         const saltBytes = enc.encode(saltHex);
         const derivedBits = await window.crypto.subtle.deriveBits(
           {
@@ -211,11 +205,19 @@
     }
   };
 
-  // Inicializar persona 'Personal' por defecto
+  // Inicializar almacenamiento local en estado limpio de fábrica (sin registros personales ni contraseñas)
   function initDefaults() {
-    const people = DB.get('people');
-    if (!people || people.length === 0) {
+    const isInit = localStorage.getItem('cm_data_initialized');
+    if (!isInit) {
+      DB.set('cards', []);
       DB.set('people', [{ id: getUUID(), name: 'Personal', updated_at: Date.now() }]);
+      DB.set('movements', []);
+      DB.set('installment_plans', []);
+      DB.set('set_asides', []);
+      DB.set('budgets', []);
+      DB.set('budget_items', []);
+      DB.setConfig({ inflation_rate: '10' });
+      localStorage.setItem('cm_data_initialized', '1');
     }
   }
   initDefaults();
@@ -378,14 +380,40 @@
         const movs = DB.get('movements');
         const cards = DB.get('cards');
         const people = DB.get('people');
+        const asides = DB.get('set_asides') || [];
         const cardsMap = Object.fromEntries(cards.map(c => [c.id, c.name]));
         const peopleMap = Object.fromEntries(people.map(p => [p.id, p.name]));
 
-        const enriched = movs.map(m => ({
-          ...m,
-          card_name: cardsMap[m.card_id] || 'Desconocida',
-          person_name: peopleMap[m.person_id] || 'Desconocido'
-        }));
+        const enriched = movs.map(m => {
+          const movAsides = asides.filter(s => s.movement_id === m.id);
+          const totalSetAside = movAsides.reduce((acc, s) => acc + (parseFloat(s.amount) || 0), 0);
+          const totalPaid = movAsides.reduce((acc, s) => {
+            const pAmt = parseFloat(s.paid_amount);
+            if (!isNaN(pAmt) && pAmt > 0) return acc + pAmt;
+            if (s.is_paid) return acc + (parseFloat(s.amount) || 0);
+            return acc;
+          }, 0);
+
+          let status = 'gastado';
+          if (totalPaid >= m.amount && m.amount > 0) {
+            status = 'pagado';
+          } else if (totalPaid > 0) {
+            status = 'pago_parcial';
+          } else if (totalSetAside >= m.amount && m.amount > 0) {
+            status = 'apartado';
+          } else if (totalSetAside > 0) {
+            status = 'apartado_parcial';
+          }
+
+          return {
+            ...m,
+            card_name: cardsMap[m.card_id] || 'Desconocida',
+            person_name: peopleMap[m.person_id] || 'Desconocido',
+            total_set_aside: totalSetAside,
+            total_paid: totalPaid,
+            status
+          };
+        });
         return enriched.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       }
       if (method === 'POST') {
@@ -468,6 +496,7 @@
     if (path.match(/^\/api\/movements\/([^/]+)$/) && method === 'DELETE') {
       const movId = path.split('/')[3];
       DB.set('movements', DB.get('movements').filter(m => m.id !== movId));
+      DB.set('set_asides', DB.get('set_asides').filter(s => s.movement_id !== movId));
       return { success: true };
     }
 
@@ -480,27 +509,49 @@
         const cardsMap = Object.fromEntries(cards.map(c => [c.id, c.name]));
         const peopleMap = Object.fromEntries(people.map(p => [p.id, p.name]));
 
-        const enriched = asides.map(s => ({
-          ...s,
-          card_name: cardsMap[s.card_id] || 'Desconocida',
-          person_name: peopleMap[s.person_id] || 'Desconocido'
-        }));
+        const enriched = asides.map(s => {
+          const paidAmount = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
+          let status = s.status || 'apartado';
+          if (paidAmount >= s.amount && s.amount > 0) {
+            status = 'pagado';
+          } else if (paidAmount > 0) {
+            status = 'pago_parcial';
+          } else {
+            status = 'apartado';
+          }
+          return {
+            ...s,
+            card_name: cardsMap[s.card_id] || 'Desconocida',
+            person_name: peopleMap[s.person_id] || 'Desconocido',
+            paid_amount: paidAmount,
+            is_paid: s.is_paid ? 1 : 0,
+            status
+          };
+        });
         return enriched.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       }
       if (method === 'POST') {
         const id = getUUID();
         const now = Date.now();
         const fundType = (body.fund_type === 'Débito' || body.fund_type === 'Debito') ? 'Débito' : 'Efectivo';
+        const numAmount = parseFloat(body.amount) || 0;
+        const numPaid = parseFloat(body.paid_amount) || 0;
+        const paidFlag = body.is_paid ? 1 : (numPaid >= numAmount && numAmount > 0 ? 1 : 0);
+        const statusVal = body.status || (paidFlag ? 'pagado' : (numPaid > 0 ? 'pago_parcial' : 'apartado'));
+
         const asides = DB.get('set_asides');
         asides.push({
           id,
           card_id: body.card_id,
           person_id: body.person_id,
           movement_id: body.movement_id || null,
-          amount: parseFloat(body.amount) || 0,
+          amount: numAmount,
           fund_type: fundType,
           note: body.note || '',
           date: body.date || new Date().toISOString().split('T')[0],
+          is_paid: paidFlag,
+          paid_amount: numPaid,
+          status: statusVal,
           updated_at: now
         });
         DB.set('set_asides', asides);
@@ -516,6 +567,60 @@
         }
         return { success: true, id };
       }
+    }
+
+    if (path.match(/^\/api\/set-asides\/([^/]+)$/) && method === 'DELETE') {
+      const asideId = path.split('/')[3];
+      const asides = DB.get('set_asides');
+      const target = asides.find(s => s.id === asideId);
+      const remainingAsides = asides.filter(s => s.id !== asideId);
+      DB.set('set_asides', remainingAsides);
+
+      if (target && target.movement_id) {
+        const hasLeft = remainingAsides.some(s => s.movement_id === target.movement_id);
+        const movs = DB.get('movements');
+        const mIdx = movs.findIndex(m => m.id === target.movement_id);
+        if (mIdx >= 0) {
+          movs[mIdx].is_set_aside = hasLeft ? 1 : 0;
+          movs[mIdx].updated_at = Date.now();
+          DB.set('movements', movs);
+        }
+      }
+      return { success: true };
+    }
+
+    if (path.match(/^\/api\/set-asides\/([^/]+)\/pay$/)) {
+      const asideId = path.split('/')[3];
+      const asides = DB.get('set_asides');
+      const idx = asides.findIndex(s => s.id === asideId);
+      if (idx >= 0) {
+        const targetAmount = (body.paid_amount !== undefined && body.paid_amount !== null && !isNaN(parseFloat(body.paid_amount)))
+          ? Math.min(asides[idx].amount, parseFloat(body.paid_amount))
+          : asides[idx].amount;
+        const isFull = targetAmount >= asides[idx].amount;
+        asides[idx].paid_amount = targetAmount;
+        asides[idx].is_paid = isFull ? 1 : 0;
+        asides[idx].status = isFull ? 'pagado' : 'pago_parcial';
+        asides[idx].updated_at = Date.now();
+        DB.set('set_asides', asides);
+        return { success: true, status: asides[idx].status, paid_amount: targetAmount, is_paid: asides[idx].is_paid };
+      }
+      return { status: 404, error: 'Apartado no encontrado' };
+    }
+
+    if (path.match(/^\/api\/set-asides\/([^/]+)\/unpay$/)) {
+      const asideId = path.split('/')[3];
+      const asides = DB.get('set_asides');
+      const idx = asides.findIndex(s => s.id === asideId);
+      if (idx >= 0) {
+        asides[idx].paid_amount = 0;
+        asides[idx].is_paid = 0;
+        asides[idx].status = 'apartado';
+        asides[idx].updated_at = Date.now();
+        DB.set('set_asides', asides);
+        return { success: true };
+      }
+      return { status: 404, error: 'Apartado no encontrado' };
     }
 
     if (path.match(/^\/api\/set-asides\/([^/]+)\/toggle-fund$/)) {
@@ -947,6 +1052,19 @@
           return await _realFetch.call(this, input, init);
         } catch (e) {
           // Si falla, continuar al motor local
+        }
+      }
+
+      // Si estamos en file:// intentar conectar directamente a http://127.0.0.1:3000 si Node está corriendo
+      if (window.location.protocol === 'file:' || !window.location.origin.startsWith('http')) {
+        try {
+          const resp = await _realFetch.call(this, 'http://127.0.0.1:3000' + url, {
+            ...init,
+            mode: 'cors'
+          });
+          return resp;
+        } catch (e) {
+          // Si el servidor de Node en 3000 no responde, continuar con el motor local
         }
       }
 

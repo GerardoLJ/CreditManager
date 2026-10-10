@@ -1,5 +1,11 @@
 
 // ==============================================================
+// GESTIÓN DE MOTOR AUTÓNOMO (LOCAL-ENGINE.JS ACTIVO)
+// ==============================================================
+// local-engine.js se encarga de interceptar y almacenar todo localmente
+// en la memoria privada del celular, permitiendo uso 100% offline sin servidores.
+
+// ==============================================================
 // FORMATEO DE MONEDA CON COMAS PARA MILES Y PUNTO PARA DECIMALES
 // ==============================================================
 function parseMoney(val) {
@@ -159,6 +165,7 @@ function setupCollapsibles() {
 
 let currentCalYear = new Date().getFullYear();
 let currentCalMonth = new Date().getMonth();
+let selectedCalDay = new Date().getDate();
 let currentCardLogoBase64 = null;
 
 // --- INICIALIZACIÓN ---
@@ -167,8 +174,114 @@ window.addEventListener('DOMContentLoaded', async () => {
   initAllMoneyInputs();
   setupEventListeners();
   setupDragAndDrop();
+  setupServerConnectionControls();
   checkAuthStatus();
 });
+
+// --- GESTIÓN DE CONEXIÓN CON EL SERVIDOR NODE.JS ---
+function getServerTargetUrl() {
+  return API_BASE || (window.location.origin.startsWith('http') ? window.location.origin : DEFAULT_API_BASE);
+}
+
+function updateServerUI(connected) {
+  const dot = document.getElementById('server-status-dot');
+  const pillText = document.getElementById('server-pill-text');
+  const banner = document.getElementById('server-offline-banner');
+  const submitBtn = document.getElementById('btn-auth-submit');
+  
+  const savedUrl = localStorage.getItem('cardmaster_server_url') || '';
+  const isRemote = Boolean(savedUrl && !savedUrl.includes('localhost') && !savedUrl.includes('127.0.0.1'));
+
+  if (dot) dot.className = 'status-dot green';
+  if (pillText) {
+    pillText.textContent = isRemote ? 'Conectado a PC' : 'Modo Autónomo (Celular)';
+  }
+  if (banner) banner.classList.add('hidden');
+  if (submitBtn) submitBtn.removeAttribute('disabled');
+}
+
+function setupServerConnectionControls() {
+  const toggleBtn = document.getElementById('btn-server-settings-toggle');
+  const openBtn = document.getElementById('btn-open-server-config');
+  const closeBtn = document.getElementById('btn-close-server-config');
+  const retryBtn = document.getElementById('btn-retry-connection');
+  const settingsBox = document.getElementById('server-settings-box');
+  const modeLocal = document.getElementById('mode-local') || document.getElementById('mode-termux');
+  const modeWifi = document.getElementById('mode-wifi');
+  const customIpGroup = document.getElementById('custom-ip-group');
+  const customIpInput = document.getElementById('custom-server-ip');
+  const saveBtn = document.getElementById('btn-save-server-config');
+
+  const savedUrl = localStorage.getItem('cardmaster_server_url') || '';
+  if (savedUrl && !savedUrl.includes('localhost') && !savedUrl.includes('127.0.0.1')) {
+    if (modeWifi) modeWifi.checked = true;
+    if (customIpGroup) customIpGroup.classList.remove('hidden');
+    if (customIpInput) customIpInput.value = savedUrl;
+  } else {
+    if (modeLocal) modeLocal.checked = true;
+    if (customIpGroup) customIpGroup.classList.add('hidden');
+    if (customIpInput) customIpInput.value = 'http://192.168.10.122:3000';
+  }
+
+  function toggleBox(show) {
+    if (!settingsBox) return;
+    if (typeof show === 'boolean') {
+      settingsBox.classList.toggle('hidden', !show);
+    } else {
+      settingsBox.classList.toggle('hidden');
+    }
+  }
+
+  if (toggleBtn) toggleBtn.addEventListener('click', () => toggleBox());
+  if (openBtn) openBtn.addEventListener('click', () => toggleBox(true));
+  if (closeBtn) closeBtn.addEventListener('click', () => toggleBox(false));
+
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      showToast("Comprobando conexión...", "info");
+      checkAuthStatus();
+    });
+  }
+
+  if (modeLocal) {
+    modeLocal.addEventListener('change', () => {
+      if (customIpGroup) customIpGroup.classList.add('hidden');
+    });
+  }
+
+  if (modeWifi) {
+    modeWifi.addEventListener('change', () => {
+      if (customIpGroup) customIpGroup.classList.remove('hidden');
+      if (customIpInput && !customIpInput.value) {
+        customIpInput.value = 'http://192.168.10.122:3000';
+      }
+      if (customIpInput) customIpInput.focus();
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      if (modeWifi && modeWifi.checked) {
+        let val = (customIpInput ? customIpInput.value : '').trim();
+        if (!val) {
+          showToast("Ingresa la dirección IP de tu PC", "warning");
+          return;
+        }
+        if (!val.startsWith('http://') && !val.startsWith('https://')) {
+          val = 'http://' + val;
+        }
+        localStorage.setItem('cardmaster_server_url', val);
+        showToast("Conectando a PC: " + val, "info");
+      } else {
+        localStorage.removeItem('cardmaster_server_url');
+        showToast("Modo Autónomo Local activado", "success");
+      }
+
+      toggleBox(false);
+      checkAuthStatus();
+    });
+  }
+}
 
 function setupTheme() {
   const saved = localStorage.getItem('theme') || 'dark';
@@ -186,9 +299,16 @@ function setupTheme() {
 
 // --- AUTENTICACIÓN ---
 async function checkAuthStatus() {
+  const dot = document.getElementById('server-status-dot');
+  if (dot) dot.className = 'status-dot yellow';
+  const pillText = document.getElementById('server-pill-text');
+  if (pillText) pillText.textContent = 'Servidor: Conectando...';
+
   try {
     const res = await fetch('/api/auth/status');
+    if (!res.ok) throw new Error("Respuesta no válida del servidor");
     const data = await res.json();
+    updateServerUI(true);
     const btnAuthFactory = document.getElementById('btn-auth-factory-reset');
     if (!data.isConfigured) {
       document.getElementById('auth-title').textContent = "Configurar Bóveda SQLite";
@@ -204,7 +324,8 @@ async function checkAuthStatus() {
       if (btnAuthFactory) btnAuthFactory.classList.remove('hidden');
     }
   } catch (err) {
-    showToast("Error conectando con el servidor Node.js", "error");
+    updateServerUI(false);
+    console.warn("No se pudo conectar al servidor:", err);
   }
 }
 
@@ -276,10 +397,11 @@ async function renderCards() {
   const container = document.getElementById('cards-grid');
   container.innerHTML = '';
 
-  const [cardsRes, movsRes, setAsideRes] = await Promise.all([
+  const [cardsRes, movsRes, setAsideRes, peopleRes] = await Promise.all([
     fetch('/api/cards').then(r => r.json()),
     fetch('/api/movements').then(r => r.json()),
-    fetch('/api/set-asides').then(r => r.json())
+    fetch('/api/set-asides').then(r => r.json()),
+    fetch('/api/people').then(r => r.json())
   ]);
 
   if (!cardsRes.length) {
@@ -307,21 +429,36 @@ async function renderCards() {
   }
 
   for (const card of cardsRes) {
-    // Calcular gastos regulares
+    // Gastos regulares de esta tarjeta
     const cardMovs = movsRes.filter(m => m.card_id === card.id);
     const regularSpent = cardMovs.reduce((sum, m) => sum + m.amount, 0);
 
-    // Calcular MSI
+    // MSI pendientes de esta tarjeta
     const msiRes = await fetch(`/api/msi/${card.id}`).then(r => r.json());
     const msiPending = msiRes.reduce((sum, p) => sum + (p.total_amount - (p.total_amount / p.months * p.paid_months)), 0);
 
-    // Calcular Apartados asociados a esta tarjeta
+    // Apartados y Pagos de esta tarjeta
     const cardSetAsides = setAsideRes.filter(s => s.card_id === card.id);
-    const totalSetAside = cardSetAsides.reduce((sum, s) => sum + s.amount, 0);
+    const cardPaidToBank = cardSetAsides.reduce((sum, s) => sum + (s.paid_amount || (s.is_paid ? s.amount : 0)), 0);
+    const cardInHand = cardSetAsides.reduce((sum, s) => sum + Math.max(0, s.amount - (s.paid_amount || (s.is_paid ? s.amount : 0))), 0);
 
-    const totalDebt = regularSpent + msiPending;
+    // Deuda real al banco: gastos reducidos por pagos al banco + MSI
+    const totalDebt = Math.max(0, (regularSpent - cardPaidToBank) + msiPending);
     const available = Math.max(0, card.credit_limit - totalDebt);
     const percent = Math.min(100, (totalDebt / card.credit_limit) * 100);
+
+    // Desglose de adeudos por persona / deudor para esta tarjeta específica (solo personas que deben > 0)
+    const debtorsWithDebt = [];
+    peopleRes.forEach(p => {
+      const pMovs = cardMovs.filter(m => m.person_id === p.id).reduce((sum, m) => sum + m.amount, 0);
+      const pMsi = msiRes.filter(item => item.person_id === p.id).reduce((sum, item) => sum + (item.total_amount - (item.total_amount / item.months * item.paid_months)), 0);
+      const pConsumed = pMovs + pMsi;
+      const pCovered = cardSetAsides.filter(s => s.person_id === p.id).reduce((sum, s) => sum + s.amount, 0);
+      const pDebt = Math.max(0, pConsumed - pCovered);
+      if (pDebt > 0) {
+        debtorsWithDebt.push({ name: p.name, debt: pDebt });
+      }
+    });
 
     let progressClass = '';
     if (percent > 70) progressClass = 'warning';
@@ -356,13 +493,30 @@ async function renderCards() {
           <span>Deuda al Banco:</span>
           <span class="metric-val">$${totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
         </div>
+        ${cardPaidToBank > 0 ? `
+        <div class="metric-row">
+          <span style="color: #60a5fa;">💳 Pagado al Banco:</span>
+          <span class="metric-val" style="color: #60a5fa;">$${cardPaidToBank.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+        </div>` : ''}
         <div class="metric-row" style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.2);">
           <span style="color: #6ee7b7;">💰 Apartado / En Mano:</span>
-          <span class="metric-val" style="color: #6ee7b7;">$${totalSetAside.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+          <span class="metric-val" style="color: #6ee7b7;">$${cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
         </div>
         <div class="card-progress-bar">
           <div class="card-progress-fill ${progressClass}" style="width: ${percent}%;"></div>
         </div>
+        ${debtorsWithDebt.length > 0 ? `
+        <div class="card-debtors-wrap">
+          <div class="card-debtors-label">👥 Deudores con saldo pendiente:</div>
+          <div class="card-debtors-list">
+            ${debtorsWithDebt.map(d => `
+              <span class="debtor-chip">
+                <span class="debtor-chip-name">${escapeHtml(d.name)}:</span>
+                <span class="debtor-chip-amount">$${d.debt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+              </span>
+            `).join('')}
+          </div>
+        </div>` : ''}
       </div>
       <div class="card-bottom">
         <span>Corte: Día ${card.cutoff_day}</span>
@@ -512,6 +666,8 @@ async function handleConfirmDeleteCard(e) {
 }
 
 // --- APARTADOS (LÓGICA SOLICITADA) ---
+let currentPayingAside = null;
+
 async function renderSetAsides() {
   const [cards, setAsides] = await Promise.all([
     fetch('/api/cards').then(r => r.json()),
@@ -524,36 +680,52 @@ async function renderSetAsides() {
   // Calcular consolidado global
   let globalEfectivo = 0;
   let globalDebito = 0;
+  let globalPagado = 0;
 
   cards.forEach(card => {
     const cardSetAsides = setAsides.filter(s => s.card_id === card.id);
-    const totalCash = cardSetAsides.filter(s => s.fund_type !== 'Débito' && s.fund_type !== 'Debito').reduce((sum, s) => sum + s.amount, 0);
-    const totalDebit = cardSetAsides.filter(s => s.fund_type === 'Débito' || s.fund_type === 'Debito').reduce((sum, s) => sum + s.amount, 0);
-    const cardTotal = totalCash + totalDebit;
+    const cardPaid = cardSetAsides.reduce((sum, s) => sum + (s.paid_amount || (s.is_paid ? s.amount : 0)), 0);
+    
+    // Solo contar como "en mano" lo no pagado
+    const totalCash = cardSetAsides.filter(s => (s.fund_type !== 'Débito' && s.fund_type !== 'Debito')).reduce((sum, s) => {
+      const paid = s.paid_amount || (s.is_paid ? s.amount : 0);
+      return sum + Math.max(0, s.amount - paid);
+    }, 0);
+    const totalDebit = cardSetAsides.filter(s => (s.fund_type === 'Débito' || s.fund_type === 'Debito')).reduce((sum, s) => {
+      const paid = s.paid_amount || (s.is_paid ? s.amount : 0);
+      return sum + Math.max(0, s.amount - paid);
+    }, 0);
+    const cardInHand = totalCash + totalDebit;
 
     globalEfectivo += totalCash;
     globalDebito += totalDebit;
+    globalPagado += cardPaid;
 
     const box = document.createElement('div');
     box.className = 'setaside-card';
     box.innerHTML = `
       <div class="setaside-header">
         <strong>${escapeHtml(card.name)}</strong>
-        <span class="countdown-badge success">Total: $${cardTotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+        <span class="countdown-badge success">En Mano: $${cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
       </div>
       <div style="margin: 12px 0;">
         <div class="setaside-breakdown-row">
-          <span>💵 Apartado en Efectivo:</span>
+          <span>💵 En Mano Efectivo:</span>
           <strong style="color: #34d399;">$${totalCash.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
         </div>
         <div class="setaside-breakdown-row">
-          <span>💳 Apartado en Débito:</span>
+          <span>💳 En Mano Débito:</span>
           <strong style="color: #60a5fa;">$${totalDebit.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
         </div>
+        ${cardPaid > 0 ? `
+        <div class="setaside-breakdown-row">
+          <span>🏦 Ya Pagado al Banco:</span>
+          <strong style="color: #38bdf8;">$${cardPaid.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
+        </div>` : ''}
       </div>
       <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
-        <span class="small text-muted">Consolidado Tarjeta:</span>
-        <span class="setaside-amount-highlight" style="font-size:1.25rem;">$${cardTotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+        <span class="small text-muted">Total En Mano:</span>
+        <span class="setaside-amount-highlight" style="font-size:1.25rem;">$${cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
       </div>
       <div style="display:flex; justify-content:flex-end; margin-top:8px;">
         <button class="btn btn-sm btn-secondary" onclick="openTransferModal('${card.id}')">🔄 Mover Efectivo ⇄ Débito</button>
@@ -562,9 +734,9 @@ async function renderSetAsides() {
     summaryGrid.appendChild(box);
   });
 
-  // Agregar tarjeta con el Gran Consolidado Global si hay tarjetas
+  // Consolidado Global
   if (cards.length > 0) {
-    const globalTotal = globalEfectivo + globalDebito;
+    const globalInHand = globalEfectivo + globalDebito;
     const globalBox = document.createElement('div');
     globalBox.className = 'setaside-card';
     globalBox.style.borderColor = 'var(--primary-color)';
@@ -582,10 +754,15 @@ async function renderSetAsides() {
           <span>💳 Total en Débito:</span>
           <strong style="color: #60a5fa; font-size:1rem;">$${globalDebito.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
         </div>
+        ${globalPagado > 0 ? `
+        <div class="setaside-breakdown-row">
+          <span>🏦 Total Pagado al Banco:</span>
+          <strong style="color: #38bdf8; font-size:1rem;">$${globalPagado.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
+        </div>` : ''}
       </div>
       <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
-        <span class="small text-muted">Dinero Total Reunido:</span>
-        <span class="setaside-amount-highlight">$${globalTotal.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+        <span class="small text-muted">Total Dinero en Mano:</span>
+        <span class="setaside-amount-highlight">$${globalInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
       </div>
     `;
     summaryGrid.prepend(globalBox);
@@ -595,12 +772,25 @@ async function renderSetAsides() {
   tbody.innerHTML = '';
 
   if (!setAsides.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Aún no tienes apartados registrados</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Aún no tienes apartados registrados</td></tr>`;
     return;
   }
 
   setAsides.forEach(s => {
     const isDebit = s.fund_type === 'Débito' || s.fund_type === 'Debito';
+    const paidAmt = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
+    const isFullyPaid = s.status === 'pagado' || (paidAmt >= s.amount && s.amount > 0);
+    const isPartialPaid = s.status === 'pago_parcial' || (paidAmt > 0 && paidAmt < s.amount);
+    
+    let statusBadge = '';
+    if (isFullyPaid) {
+      statusBadge = `<span class="status-badge pagado">✅ Pagado</span>`;
+    } else if (isPartialPaid) {
+      statusBadge = `<span class="status-badge pago-parcial">💳 Pago Parcial: $${paidAmt.toLocaleString()}</span>`;
+    } else {
+      statusBadge = `<span class="status-badge apartado">💰 Apartado</span>`;
+    }
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${s.date}</td>
@@ -614,10 +804,118 @@ async function renderSetAsides() {
       <td style="font-weight:700; color:${s.amount < 0 ? 'var(--danger-color)' : 'var(--success-color)'};">
         $${s.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}
       </td>
+      <td>${statusBadge}</td>
       <td>${escapeHtml(s.note || 'Apartado ordinario')}</td>
+      <td>
+        <div style="display:flex; gap:6px; align-items:center;">
+          ${s.amount > 0 && !isFullyPaid ? `
+            <button class="btn btn-sm btn-primary" onclick="openPayBankModal('${s.id}')" title="Pagar o abonar al banco">💳 Pagar</button>
+          ` : ''}
+          ${(isFullyPaid || isPartialPaid) ? `
+            <button class="btn btn-sm btn-secondary" onclick="unpaySetAside('${s.id}')" title="Deshacer abono al banco">↩️</button>
+          ` : ''}
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteSetAside('${s.id}')" title="Eliminar este apartado">🗑️</button>
+        </div>
+      </td>
     `;
     tbody.appendChild(tr);
   });
+}
+
+async function openPayBankModal(asideId) {
+  const asides = await fetch('/api/set-asides').then(r => r.json());
+  const s = asides.find(x => x.id === asideId);
+  if (!s) return;
+
+  currentPayingAside = s;
+  const paidAmt = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
+  const remaining = Math.max(0, s.amount - paidAmt);
+
+  document.getElementById('pay-bank-aside-id').value = s.id;
+  document.getElementById('pay-bank-card-name').value = s.card_name || 'Tarjeta';
+  document.getElementById('pay-bank-person-name').value = s.person_name || 'Personal';
+  document.getElementById('pay-bank-available-display').textContent = `$${remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}`;
+  document.getElementById('pay-full-label-amt').textContent = `$${remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}`;
+
+  document.getElementById('pay-mode-full').checked = true;
+  document.getElementById('pay-partial-amount-group').classList.add('hidden');
+  setMoneyInput(document.getElementById('pay-bank-amount'), remaining);
+
+  document.getElementById('modal-pay-bank').classList.remove('hidden');
+}
+
+async function handlePayBankSubmit(e) {
+  e.preventDefault();
+  if (!currentPayingAside) return;
+
+  const asideId = document.getElementById('pay-bank-aside-id').value;
+  const isPartial = document.getElementById('pay-mode-partial').checked;
+  const paidAlready = Number(currentPayingAside.paid_amount) || (currentPayingAside.is_paid ? currentPayingAside.amount : 0);
+  const remaining = Math.max(0, currentPayingAside.amount - paidAlready);
+
+  let amountToPay = remaining;
+  if (isPartial) {
+    amountToPay = parseMoney(document.getElementById('pay-bank-amount').value);
+    if (isNaN(amountToPay) || amountToPay <= 0) {
+      showToast("Ingresa un monto válido a pagar", "error");
+      return;
+    }
+  }
+
+  const totalPaidAfter = Math.min(currentPayingAside.amount, paidAlready + amountToPay);
+
+  try {
+    const res = await fetch(`/api/set-asides/${asideId}/pay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paid_amount: totalPaidAfter })
+    });
+    if (!res.ok) throw new Error("Error procesando pago");
+
+    document.getElementById('modal-pay-bank').classList.add('hidden');
+    await refreshAllData();
+    showToast(`¡Pago de $${amountToPay.toLocaleString('es-MX', {minimumFractionDigits:2})} aplicado al banco con éxito!`, "success");
+  } catch (err) {
+    showToast(err.message || "Error al pagar", "error");
+  }
+}
+
+async function unpaySetAside(asideId) {
+  if (!confirm("¿Deseas revertir este pago al banco y volver a dejar el dinero en mano?")) return;
+  try {
+    const res = await fetch(`/api/set-asides/${asideId}/unpay`, { method: 'POST' });
+    if (!res.ok) throw new Error("Error al revertir pago");
+    await refreshAllData();
+    showToast("Pago revertido a dinero en mano", "success");
+  } catch (err) {
+    showToast(err.message || "Error al revertir", "error");
+  }
+}
+
+async function deleteSetAside(asideId) {
+  if (!confirm("¿Seguro que deseas eliminar este dinero apartado?")) return;
+  try {
+    const res = await fetch(`/api/set-asides/${asideId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error("Error al eliminar apartado");
+    await refreshAllData();
+    showToast("Dinero apartado eliminado exitosamente", "success");
+  } catch (err) {
+    showToast(err.message || "Error al eliminar apartado", "error");
+  }
+}
+
+async function payMovementFromAside(movId) {
+  const asides = await fetch('/api/set-asides').then(r => r.json());
+  const related = asides.find(s => s.movement_id === movId);
+  if (related) {
+    openPayBankModal(related.id);
+  } else {
+    const movs = await fetch('/api/movements').then(r => r.json());
+    const m = movs.find(x => x.id === movId);
+    if (m) {
+      openSetAsideModal(m.id, m.card_id, m.person_id, m.amount);
+    }
+  }
 }
 
 function openSetAsideModal(movId = null, cardId = null, personId = null, defaultAmount = '') {
@@ -675,6 +973,27 @@ async function renderMovements() {
   }
 
   filtered.forEach(m => {
+    let statusBadge = '';
+    let actionBtn = '';
+
+    if (m.status === 'pagado') {
+      statusBadge = `<span class="status-badge pagado">✅ Pagado</span>`;
+      actionBtn = `<span class="countdown-badge success" style="font-size:0.75rem;">✓ Liquidado</span>`;
+    } else if (m.status === 'pago_parcial') {
+      statusBadge = `<span class="status-badge pago-parcial">💳 Pago Parcial ($${(m.total_paid || 0).toLocaleString()})</span>`;
+      actionBtn = `<button class="btn btn-sm btn-primary" onclick="payMovementFromAside('${m.id}')" title="Abonar resto al banco">💳 Pagar Resto</button>`;
+    } else if (m.status === 'apartado') {
+      statusBadge = `<span class="status-badge apartado">💰 Apartado</span>`;
+      actionBtn = `<button class="btn btn-sm btn-primary" onclick="payMovementFromAside('${m.id}')" title="Liquidar dinero al banco">💳 Pagar Banco</button>`;
+    } else if (m.status === 'apartado_parcial') {
+      const rest = Math.max(0, m.amount - (m.total_set_aside || 0));
+      statusBadge = `<span class="status-badge apartado-parcial">⏳ Apartado Parcial ($${(m.total_set_aside || 0).toLocaleString()} de $${m.amount.toLocaleString()})</span>`;
+      actionBtn = `<button class="btn btn-sm btn-secondary" onclick="openSetAsideModal('${m.id}', '${m.card_id}', '${m.person_id}', '${rest}')" title="Apartar faltante ($${rest})">💰 + Apartar Resto</button>`;
+    } else {
+      statusBadge = `<span class="status-badge gastado">🛒 Gastado</span>`;
+      actionBtn = `<button class="btn btn-sm btn-secondary" onclick="openSetAsideModal('${m.id}', '${m.card_id}', '${m.person_id}', '${m.amount}')">💰 Apartar</button>`;
+    }
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${m.date}</td>
@@ -683,10 +1002,10 @@ async function renderMovements() {
       <td><span class="countdown-badge normal">${escapeHtml(m.person_name)}</span></td>
       <td style="font-weight: 700;">$${m.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
       <td>
-        ${m.is_set_aside 
-          ? `<span class="countdown-badge success">✓ Dinero en Mano</span>` 
-          : `<button class="btn btn-sm btn-secondary" onclick="openSetAsideModal('${m.id}', '${m.card_id}', '${m.person_id}', '${m.amount}')">💰 Apartar</button>`
-        }
+        <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+          ${statusBadge}
+          ${actionBtn}
+        </div>
       </td>
       <td>
         <div style="display:flex; gap:6px;">
@@ -835,7 +1154,7 @@ async function deletePerson(pId) {
   refreshAllData();
 }
 
-// --- CALENDARIO ---
+// --- CALENDARIO Y AGENDA ---
 async function renderCalendar() {
   const cards = await fetch('/api/cards').then(r => r.json());
   const summaryBox = document.getElementById('calendar-cards-summary');
@@ -847,7 +1166,6 @@ async function renderCalendar() {
   let hasValidConvergence = false;
 
   if (cards.length > 0) {
-    // Para cada tarjeta: ventana [cutoff + 1, cutoff + 15]
     const startDays = cards.map(c => c.cutoff_day + 1);
     const endDays = cards.map(c => c.cutoff_day + 15);
 
@@ -930,41 +1248,150 @@ async function renderCalendar() {
   const firstDay = new Date(currentCalYear, currentCalMonth, 1).getDay();
   const totalDays = new Date(currentCalYear, currentCalMonth + 1, 0).getDate();
 
+  // Días previos vacíos
   for (let i = 0; i < firstDay; i++) {
     const el = document.createElement('div');
-    el.className = 'cal-day-cell';
-    el.style.background = 'transparent';
+    el.className = 'cal-day-cell empty';
     daysGrid.appendChild(el);
   }
+
+  // Validar selectedCalDay
+  if (!selectedCalDay || selectedCalDay < 1) selectedCalDay = 1;
+  if (selectedCalDay > totalDays) selectedCalDay = totalDays;
 
   for (let day = 1; day <= totalDays; day++) {
     const cell = document.createElement('div');
     cell.className = 'cal-day-cell';
-    if (day === today.getDate() && currentCalMonth === today.getMonth() && currentCalYear === today.getFullYear()) {
+    cell.dataset.day = day;
+
+    const isToday = (day === today.getDate() && currentCalMonth === today.getMonth() && currentCalYear === today.getFullYear());
+    if (isToday) {
       cell.classList.add('today');
     }
 
-    if (hasValidConvergence && day >= convergenceStart && day <= convergenceEnd) {
+    if (day === selectedCalDay) {
+      cell.classList.add('selected');
+    }
+
+    const isGolden = (hasValidConvergence && day >= convergenceStart && day <= convergenceEnd);
+    if (isGolden) {
       cell.classList.add('golden-day');
       cell.title = "Día dentro de la ventana de pago unificado (todas las tarjetas vigentes)";
     }
 
-    cell.innerHTML = `<strong>${day}</strong>`;
+    const dayCortes = cards.filter(c => c.cutoff_day === day);
+    const dayInicios = cards.filter(c => (c.cutoff_day + 1) === day);
+    const dayLimites = cards.filter(c => (c.cutoff_day + 15) === day);
 
-    cards.forEach(c => {
-      if (day === c.cutoff_day) {
-        cell.innerHTML += `<div class="cal-event-pill corte" title="Día de corte">✂️ ${escapeHtml(c.name)}</div>`;
-      }
-      if (day === (c.cutoff_day + 1)) {
-        cell.innerHTML += `<div class="cal-event-pill pago-inicio" title="Inicio de ventana de pago">💰 Pago ${escapeHtml(c.name)}</div>`;
-      }
-      if (day === (c.cutoff_day + 15)) {
-        cell.innerHTML += `<div class="cal-event-pill pago-limite" title="Último día de pago (Día 15)">⚠️ Límite ${escapeHtml(c.name)}</div>`;
-      }
+    let pillsHtml = '';
+    let dotsHtml = '';
+
+    dayCortes.forEach(c => {
+      pillsHtml += `<div class="cal-event-pill corte" title="Día de corte">✂️ ${escapeHtml(c.name)}</div>`;
+      dotsHtml += `<span class="cal-event-dot corte" title="Día de corte: ${escapeHtml(c.name)}"></span>`;
+    });
+    dayInicios.forEach(c => {
+      pillsHtml += `<div class="cal-event-pill pago-inicio" title="Inicio de ventana de pago">💰 Pago ${escapeHtml(c.name)}</div>`;
+      dotsHtml += `<span class="cal-event-dot pago-inicio" title="Inicio de pago: ${escapeHtml(c.name)}"></span>`;
+    });
+    dayLimites.forEach(c => {
+      pillsHtml += `<div class="cal-event-pill pago-limite" title="Último día de pago (Día 15)">⚠️ Límite ${escapeHtml(c.name)}</div>`;
+      dotsHtml += `<span class="cal-event-dot pago-limite" title="Límite: ${escapeHtml(c.name)}"></span>`;
+    });
+
+    cell.innerHTML = `
+      <div class="cal-day-number">
+        <span>${day}</span>
+        ${isToday ? '<span style="font-size:0.65rem; color:var(--primary-color);">Hoy</span>' : ''}
+      </div>
+      <div class="cal-dots-container">
+        ${dotsHtml}
+      </div>
+      ${pillsHtml}
+    `;
+
+    cell.addEventListener('click', () => {
+      selectedCalDay = day;
+      document.querySelectorAll('.cal-day-cell').forEach(c => c.classList.remove('selected'));
+      cell.classList.add('selected');
+      updateDayDetailPanel(day, currentCalMonth, currentCalYear, cards, hasValidConvergence, convergenceStart, convergenceEnd);
     });
 
     daysGrid.appendChild(cell);
   }
+
+  // Actualizar panel de detalle del día
+  updateDayDetailPanel(selectedCalDay, currentCalMonth, currentCalYear, cards, hasValidConvergence, convergenceStart, convergenceEnd);
+}
+
+function updateDayDetailPanel(day, month, year, cards, hasValidConvergence, convStart, convEnd) {
+  const panel = document.getElementById('calendar-day-detail-panel');
+  if (!panel) return;
+
+  const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  const dayCortes = cards.filter(c => c.cutoff_day === day);
+  const dayInicios = cards.filter(c => (c.cutoff_day + 1) === day);
+  const dayLimites = cards.filter(c => (c.cutoff_day + 15) === day);
+  const isGolden = (hasValidConvergence && day >= convStart && day <= convEnd);
+
+  const totalEvents = dayCortes.length + dayInicios.length + dayLimites.length;
+
+  let contentHtml = `
+    <div class="cal-detail-header">
+      <div class="cal-detail-title">
+        <span>📅 Agenda: ${day} de ${monthNames[month]} de ${year}</span>
+        ${isGolden ? '<span class="convergence-badge" style="font-size:0.75rem; padding:2px 8px;">★ Pago Unificado</span>' : ''}
+      </div>
+      <span class="small text-muted">${totalEvents} evento(s) este día</span>
+    </div>
+  `;
+
+  if (totalEvents === 0) {
+    contentHtml += `
+      <div style="color: var(--text-muted); font-size: 0.9rem; padding: 8px 0;">
+        No hay fechas de corte ni límites bancarios programados para este día.
+      </div>
+    `;
+  } else {
+    contentHtml += `<div class="cal-detail-events-list">`;
+    dayCortes.forEach(c => {
+      contentHtml += `
+        <div class="cal-detail-event-item corte">
+          <div>
+            <strong>✂️ Corte de Tarjeta: ${escapeHtml(c.name)}</strong>
+            <div class="small text-muted">Último día del ciclo. A partir de mañana inicia el periodo oficial para pagar al banco.</div>
+          </div>
+          <span class="countdown-badge normal">Día ${c.cutoff_day}</span>
+        </div>
+      `;
+    });
+    dayInicios.forEach(c => {
+      contentHtml += `
+        <div class="cal-detail-event-item pago-inicio">
+          <div>
+            <strong>💰 Inicio de Ventana de Pago: ${escapeHtml(c.name)}</strong>
+            <div class="small text-muted">Ya puedes pagar al banco con tu estado de cuenta cerrado. Tienes hasta el día ${c.cutoff_day + 15}.</div>
+          </div>
+          <span class="countdown-badge success">Inicio Pago</span>
+        </div>
+      `;
+    });
+    dayLimites.forEach(c => {
+      contentHtml += `
+        <div class="cal-detail-event-item pago-limite">
+          <div>
+            <strong style="color:var(--danger-color);">⚠️ Fecha Límite de Pago: ${escapeHtml(c.name)}</strong>
+            <div class="small text-muted">¡Día final para pagar! Liquida hoy para no generar intereses bancarios ni penalizaciones.</div>
+          </div>
+          <span class="countdown-badge urgent">Vence Hoy</span>
+        </div>
+      `;
+    });
+    contentHtml += `</div>`;
+  }
+
+  panel.innerHTML = contentHtml;
+  panel.classList.add('active');
 }
 
 // --- PRESUPUESTOS ---
@@ -1596,6 +2023,54 @@ function setupEventListeners() {
 
   document.getElementById('filter-card').addEventListener('change', renderMovements);
   document.getElementById('filter-person').addEventListener('change', renderMovements);
+
+  // Calendario: navegación y botón de Hoy
+  const calPrevBtn = document.getElementById('cal-prev-month');
+  if (calPrevBtn) {
+    calPrevBtn.addEventListener('click', () => {
+      currentCalMonth--;
+      if (currentCalMonth < 0) {
+        currentCalMonth = 11;
+        currentCalYear--;
+      }
+      renderCalendar();
+    });
+  }
+
+  const calNextBtn = document.getElementById('cal-next-month');
+  if (calNextBtn) {
+    calNextBtn.addEventListener('click', () => {
+      currentCalMonth++;
+      if (currentCalMonth > 11) {
+        currentCalMonth = 0;
+        currentCalYear++;
+      }
+      renderCalendar();
+    });
+  }
+
+  const calTodayBtn = document.getElementById('cal-today-btn');
+  if (calTodayBtn) {
+    calTodayBtn.addEventListener('click', () => {
+      currentCalMonth = new Date().getMonth();
+      currentCalYear = new Date().getFullYear();
+      selectedCalDay = new Date().getDate();
+      renderCalendar();
+    });
+  }
+
+  // Pagar al banco (Modal y formulario)
+  document.querySelectorAll('input[name="pay-bank-mode"]').forEach(r => {
+    r.addEventListener('change', (e) => {
+      const isPartial = e.target.value === 'partial';
+      document.getElementById('pay-partial-amount-group').classList.toggle('hidden', !isPartial);
+    });
+  });
+
+  const formPayBank = document.getElementById('form-pay-bank');
+  if (formPayBank) {
+    formPayBank.addEventListener('submit', handlePayBankSubmit);
+  }
 }
 
 function openBudgetItemModal(bId) {
@@ -1718,10 +2193,10 @@ function showToast(msg, type = "normal") {
   setTimeout(() => toast.remove(), 3500);
 }
 
-// --- SOPORTE PWA / INSTALACIÓN NATIVA EN ANDROID ---
-if ('serviceWorker' in navigator) {
+// --- SOPORTE PWA / INSTALACIÓN NATIVA EN NAVEGADORES (iOS / Android / Desktop) ---
+if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js').catch(err => {
+    navigator.serviceWorker.register('./service-worker.js').catch(err => {
       console.warn("ServiceWorker:", err);
     });
   });

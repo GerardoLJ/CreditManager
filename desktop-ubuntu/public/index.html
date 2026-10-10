@@ -248,7 +248,9 @@
                 <th>Entregado Por</th>
                 <th>Ubicación</th>
                 <th>Monto Apartado</th>
+                <th>Estatus</th>
                 <th>Nota / Detalle</th>
+                <th>Acción</th>
               </tr>
             </thead>
             <tbody id="setaside-tbody">
@@ -271,14 +273,18 @@
 
         <div class="calendar-widget-box">
           <div class="calendar-nav-bar">
-            <button id="cal-prev-month" class="btn btn-sm btn-secondary">&lt;</button>
-            <h3 id="cal-month-title">Mes Año</h3>
-            <button id="cal-next-month" class="btn btn-sm btn-secondary">&gt;</button>
+            <button id="cal-prev-month" class="btn btn-sm btn-secondary" title="Mes Anterior">◀</button>
+            <div class="cal-title-wrap">
+              <h3 id="cal-month-title">Mes Año</h3>
+              <button id="cal-today-btn" class="btn btn-sm btn-secondary" title="Ir al mes actual">Hoy</button>
+            </div>
+            <button id="cal-next-month" class="btn btn-sm btn-secondary" title="Mes Siguiente">▶</button>
           </div>
           <div class="calendar-grid-header">
             <div>Dom</div><div>Lun</div><div>Mar</div><div>Mié</div><div>Jue</div><div>Vie</div><div>Sáb</div>
           </div>
           <div class="calendar-days-grid" id="calendar-days-grid"></div>
+          <div id="calendar-day-detail-panel" class="calendar-day-detail-panel"></div>
         </div>
       </section>
 
@@ -589,6 +595,57 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-close="modal-setaside">Cancelar</button>
           <button type="submit" class="btn btn-primary">Confirmar Apartado</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: PAGAR AL BANCO (TOTAL O PARCIAL) -->
+  <div id="modal-pay-bank" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-pay-bank-title">💳 Pagar Dinero al Banco</h3>
+        <button class="modal-close" data-close="modal-pay-bank">&times;</button>
+      </div>
+      <form id="form-pay-bank">
+        <input type="hidden" id="pay-bank-aside-id">
+        <div class="form-row">
+          <div class="form-group col">
+            <label>Tarjeta a abonar:</label>
+            <input type="text" id="pay-bank-card-name" class="form-control" readonly disabled>
+          </div>
+          <div class="form-group col">
+            <label>Persona:</label>
+            <input type="text" id="pay-bank-person-name" class="form-control" readonly disabled>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Monto Disponible en este Apartado:</label>
+          <div id="pay-bank-available-display" class="setaside-amount-highlight" style="font-size: 1.35rem; margin: 4px 0;">$0.00</div>
+        </div>
+        <div class="form-group">
+          <label>Tipo de Pago al Banco:</label>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-top: 6px;">
+            <label class="switch-label">
+              <input type="radio" name="pay-bank-mode" id="pay-mode-full" value="full" checked>
+              <span><strong>Liquidación Total</strong> (Pagar los <span id="pay-full-label-amt">$0.00</span> al banco)</span>
+            </label>
+            <label class="switch-label">
+              <input type="radio" name="pay-bank-mode" id="pay-mode-partial" value="partial">
+              <span><strong>Pago Parcial</strong> (Abonar una cantidad parcial)</span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group hidden" id="pay-partial-amount-group">
+          <label for="pay-bank-amount">Monto parcial a abonar ($):</label>
+          <input type="text" inputmode="decimal" id="pay-bank-amount" class="form-control money-input" placeholder="0.00">
+        </div>
+        <p class="small text-muted" style="margin-top: 8px;">
+          💡 <strong>Impacto:</strong> Al pagar al banco, se reduce inmediatamente el monto gastado y aumenta tu crédito disponible en la tarjeta.
+        </p>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-close="modal-pay-bank">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-pay-bank">Confirmar Pago al Banco</button>
         </div>
       </form>
     </div>

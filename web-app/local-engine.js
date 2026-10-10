@@ -380,14 +380,40 @@
         const movs = DB.get('movements');
         const cards = DB.get('cards');
         const people = DB.get('people');
+        const asides = DB.get('set_asides') || [];
         const cardsMap = Object.fromEntries(cards.map(c => [c.id, c.name]));
         const peopleMap = Object.fromEntries(people.map(p => [p.id, p.name]));
 
-        const enriched = movs.map(m => ({
-          ...m,
-          card_name: cardsMap[m.card_id] || 'Desconocida',
-          person_name: peopleMap[m.person_id] || 'Desconocido'
-        }));
+        const enriched = movs.map(m => {
+          const movAsides = asides.filter(s => s.movement_id === m.id);
+          const totalSetAside = movAsides.reduce((acc, s) => acc + (parseFloat(s.amount) || 0), 0);
+          const totalPaid = movAsides.reduce((acc, s) => {
+            const pAmt = parseFloat(s.paid_amount);
+            if (!isNaN(pAmt) && pAmt > 0) return acc + pAmt;
+            if (s.is_paid) return acc + (parseFloat(s.amount) || 0);
+            return acc;
+          }, 0);
+
+          let status = 'gastado';
+          if (totalPaid >= m.amount && m.amount > 0) {
+            status = 'pagado';
+          } else if (totalPaid > 0) {
+            status = 'pago_parcial';
+          } else if (totalSetAside >= m.amount && m.amount > 0) {
+            status = 'apartado';
+          } else if (totalSetAside > 0) {
+            status = 'apartado_parcial';
+          }
+
+          return {
+            ...m,
+            card_name: cardsMap[m.card_id] || 'Desconocida',
+            person_name: peopleMap[m.person_id] || 'Desconocido',
+            total_set_aside: totalSetAside,
+            total_paid: totalPaid,
+            status
+          };
+        });
         return enriched.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       }
       if (method === 'POST') {
@@ -470,6 +496,7 @@
     if (path.match(/^\/api\/movements\/([^/]+)$/) && method === 'DELETE') {
       const movId = path.split('/')[3];
       DB.set('movements', DB.get('movements').filter(m => m.id !== movId));
+      DB.set('set_asides', DB.get('set_asides').filter(s => s.movement_id !== movId));
       return { success: true };
     }
 
@@ -482,27 +509,49 @@
         const cardsMap = Object.fromEntries(cards.map(c => [c.id, c.name]));
         const peopleMap = Object.fromEntries(people.map(p => [p.id, p.name]));
 
-        const enriched = asides.map(s => ({
-          ...s,
-          card_name: cardsMap[s.card_id] || 'Desconocida',
-          person_name: peopleMap[s.person_id] || 'Desconocido'
-        }));
+        const enriched = asides.map(s => {
+          const paidAmount = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
+          let status = s.status || 'apartado';
+          if (paidAmount >= s.amount && s.amount > 0) {
+            status = 'pagado';
+          } else if (paidAmount > 0) {
+            status = 'pago_parcial';
+          } else {
+            status = 'apartado';
+          }
+          return {
+            ...s,
+            card_name: cardsMap[s.card_id] || 'Desconocida',
+            person_name: peopleMap[s.person_id] || 'Desconocido',
+            paid_amount: paidAmount,
+            is_paid: s.is_paid ? 1 : 0,
+            status
+          };
+        });
         return enriched.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       }
       if (method === 'POST') {
         const id = getUUID();
         const now = Date.now();
         const fundType = (body.fund_type === 'Débito' || body.fund_type === 'Debito') ? 'Débito' : 'Efectivo';
+        const numAmount = parseFloat(body.amount) || 0;
+        const numPaid = parseFloat(body.paid_amount) || 0;
+        const paidFlag = body.is_paid ? 1 : (numPaid >= numAmount && numAmount > 0 ? 1 : 0);
+        const statusVal = body.status || (paidFlag ? 'pagado' : (numPaid > 0 ? 'pago_parcial' : 'apartado'));
+
         const asides = DB.get('set_asides');
         asides.push({
           id,
           card_id: body.card_id,
           person_id: body.person_id,
           movement_id: body.movement_id || null,
-          amount: parseFloat(body.amount) || 0,
+          amount: numAmount,
           fund_type: fundType,
           note: body.note || '',
           date: body.date || new Date().toISOString().split('T')[0],
+          is_paid: paidFlag,
+          paid_amount: numPaid,
+          status: statusVal,
           updated_at: now
         });
         DB.set('set_asides', asides);
@@ -518,6 +567,60 @@
         }
         return { success: true, id };
       }
+    }
+
+    if (path.match(/^\/api\/set-asides\/([^/]+)$/) && method === 'DELETE') {
+      const asideId = path.split('/')[3];
+      const asides = DB.get('set_asides');
+      const target = asides.find(s => s.id === asideId);
+      const remainingAsides = asides.filter(s => s.id !== asideId);
+      DB.set('set_asides', remainingAsides);
+
+      if (target && target.movement_id) {
+        const hasLeft = remainingAsides.some(s => s.movement_id === target.movement_id);
+        const movs = DB.get('movements');
+        const mIdx = movs.findIndex(m => m.id === target.movement_id);
+        if (mIdx >= 0) {
+          movs[mIdx].is_set_aside = hasLeft ? 1 : 0;
+          movs[mIdx].updated_at = Date.now();
+          DB.set('movements', movs);
+        }
+      }
+      return { success: true };
+    }
+
+    if (path.match(/^\/api\/set-asides\/([^/]+)\/pay$/)) {
+      const asideId = path.split('/')[3];
+      const asides = DB.get('set_asides');
+      const idx = asides.findIndex(s => s.id === asideId);
+      if (idx >= 0) {
+        const targetAmount = (body.paid_amount !== undefined && body.paid_amount !== null && !isNaN(parseFloat(body.paid_amount)))
+          ? Math.min(asides[idx].amount, parseFloat(body.paid_amount))
+          : asides[idx].amount;
+        const isFull = targetAmount >= asides[idx].amount;
+        asides[idx].paid_amount = targetAmount;
+        asides[idx].is_paid = isFull ? 1 : 0;
+        asides[idx].status = isFull ? 'pagado' : 'pago_parcial';
+        asides[idx].updated_at = Date.now();
+        DB.set('set_asides', asides);
+        return { success: true, status: asides[idx].status, paid_amount: targetAmount, is_paid: asides[idx].is_paid };
+      }
+      return { status: 404, error: 'Apartado no encontrado' };
+    }
+
+    if (path.match(/^\/api\/set-asides\/([^/]+)\/unpay$/)) {
+      const asideId = path.split('/')[3];
+      const asides = DB.get('set_asides');
+      const idx = asides.findIndex(s => s.id === asideId);
+      if (idx >= 0) {
+        asides[idx].paid_amount = 0;
+        asides[idx].is_paid = 0;
+        asides[idx].status = 'apartado';
+        asides[idx].updated_at = Date.now();
+        DB.set('set_asides', asides);
+        return { success: true };
+      }
+      return { status: 404, error: 'Apartado no encontrado' };
     }
 
     if (path.match(/^\/api\/set-asides\/([^/]+)\/toggle-fund$/)) {
