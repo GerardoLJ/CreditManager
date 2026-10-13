@@ -1165,6 +1165,8 @@ public class MainActivity extends AppCompatActivity {
         }
         spMov.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, movLabels));
 
+        TextView tvMovInfo = dView.findViewById(R.id.tv_sa_movement_info);
+
         spMov.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
@@ -1183,6 +1185,16 @@ public class MainActivity extends AppCompatActivity {
                             spPerson.setSelection(i);
                             break;
                         }
+                    }
+                    if (tvMovInfo != null) {
+                        tvMovInfo.setVisibility(View.VISIBLE);
+                        tvMovInfo.setText("Gasto: " + m.getConcept() + " (" + formatCurrency(m.getAmount()) + ")" +
+                                " • Ya cubierto: " + formatCurrency(m.getTotalSetAside()) +
+                                " • Falta: " + formatCurrency(m.getPendingAmount()));
+                    }
+                } else {
+                    if (tvMovInfo != null) {
+                        tvMovInfo.setVisibility(View.GONE);
                     }
                 }
             }
@@ -1454,8 +1466,14 @@ public class MainActivity extends AppCompatActivity {
 
         View tvMovLabel = dView.findViewById(R.id.tv_sa_movement_label);
         Spinner spMov = dView.findViewById(R.id.spinner_sa_movement);
+        TextView tvMovInfo = dView.findViewById(R.id.tv_sa_movement_info);
         if (tvMovLabel != null) tvMovLabel.setVisibility(View.GONE);
         if (spMov != null) spMov.setVisibility(View.GONE);
+        if (tvMovInfo != null) {
+            tvMovInfo.setVisibility(View.VISIBLE);
+            tvMovInfo.setText(String.format(Locale.US, "Gasto: %s (%s) • Ya cubierto: %s • Falta: %s",
+                    m.getConcept(), formatCurrency(m.getAmount()), formatCurrency(m.getTotalSetAside()), formatCurrency(m.getPendingAmount())));
+        }
 
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
         etDate.setText(sdf.format(new Date()));

@@ -713,6 +713,13 @@
       <form id="form-setaside">
         <input type="hidden" id="setaside-id">
         <input type="hidden" id="setaside-movement-id">
+        <div class="form-group" id="group-setaside-movement" style="margin-bottom: 1rem;">
+          <label for="setaside-movement-select" style="color: var(--primary-color, #38bdf8); font-weight: 600;">📌 Gasto al que se abonará el dinero (Opcional):</label>
+          <select id="setaside-movement-select" class="form-control">
+            <option value="">-- Apartado General (sin gasto específico) --</option>
+          </select>
+          <div id="setaside-movement-info" class="small" style="color: var(--success-color, #34d399); margin-top: 5px; font-weight: 600; display: none;"></div>
+        </div>
         <div class="form-row">
           <div class="form-group col">
             <label for="setaside-card">Tarjeta Destino:</label>

@@ -1395,6 +1395,8 @@ async function payMovementFromAside(movId) {
   }
 }
 
+let currentPendingMovementsList = [];
+
 async function openSetAsideModal(movId = null, cardId = null, personId = null, defaultAmount = '', asideId = null) {
   document.getElementById('form-setaside').reset();
   document.getElementById('setaside-date').value = new Date().toISOString().split('T')[0];
@@ -1403,6 +1405,89 @@ async function openSetAsideModal(movId = null, cardId = null, personId = null, d
 
   const titleEl = document.getElementById('modal-setaside-title');
   const submitBtn = document.getElementById('btn-save-setaside-submit');
+  const movSelect = document.getElementById('setaside-movement-select');
+  const movInfo = document.getElementById('setaside-movement-info');
+
+  // Cargar y reconciliar gastos pendientes para poblar el selector
+  try {
+    const [movs, setAsides, cards, people] = await Promise.all([
+      fetch('/api/movements').then(r => r.json()).catch(() => []),
+      fetch('/api/set-asides').then(r => r.json()).catch(() => []),
+      fetch('/api/cards').then(r => r.json()).catch(() => []),
+      fetch('/api/people').then(r => r.json()).catch(() => [])
+    ]);
+
+    const cardMap = Object.fromEntries(cards.map(c => [String(c.id), c.name]));
+    const personMap = Object.fromEntries(people.map(p => [String(p.id), p.name]));
+
+    const directMap = {};
+    const unallocByCard = {};
+    let unallocGlobal = 0;
+
+    setAsides.forEach(s => {
+      if (asideId && String(s.id) === String(asideId)) return;
+      const amt = parseFloat(s.amount) || 0;
+      if (s.movement_id) {
+        directMap[String(s.movement_id)] = (directMap[String(s.movement_id)] || 0) + amt;
+      } else if (s.card_id) {
+        unallocByCard[String(s.card_id)] = (unallocByCard[String(s.card_id)] || 0) + amt;
+      } else {
+        unallocGlobal += amt;
+      }
+    });
+
+    const sortedMovs = [...movs].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const pendingList = [];
+
+    sortedMovs.forEach(m => {
+      if (m.status === 'pagado') return;
+      let direct = directMap[String(m.id)] || 0;
+      let covered = direct;
+      let rem = Math.max(0, (parseFloat(m.amount) || 0) - covered);
+
+      if (rem > 0.001 && m.card_id && unallocByCard[String(m.card_id)] > 0.001) {
+        const alloc = Math.min(rem, unallocByCard[String(m.card_id)]);
+        covered += alloc;
+        unallocByCard[String(m.card_id)] -= alloc;
+        rem = Math.max(0, (parseFloat(m.amount) || 0) - covered);
+      }
+
+      if (rem > 0.001 && unallocGlobal > 0.001) {
+        const alloc = Math.min(rem, unallocGlobal);
+        covered += alloc;
+        unallocGlobal -= alloc;
+        rem = Math.max(0, (parseFloat(m.amount) || 0) - covered);
+      }
+
+      if ((rem > 0.001 && m.status !== 'apartado') || (movId && String(m.id) === String(movId))) {
+        pendingList.push({
+          id: String(m.id),
+          concept: m.concept,
+          amount: parseFloat(m.amount) || 0,
+          total_aside: covered,
+          remaining: rem,
+          card_id: String(m.card_id),
+          card_name: cardMap[String(m.card_id)] || 'Tarjeta',
+          person_id: String(m.person_id),
+          person_name: personMap[String(m.person_id)] || 'Personal'
+        });
+      }
+    });
+
+    currentPendingMovementsList = pendingList;
+
+    if (movSelect) {
+      movSelect.innerHTML = '<option value="">-- Apartado General (sin gasto específico) --</option>';
+      pendingList.forEach(pm => {
+        const opt = document.createElement('option');
+        opt.value = pm.id;
+        opt.textContent = `${pm.concept} ($${pm.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})} pend. • ${pm.card_name} - ${pm.person_name})`;
+        movSelect.appendChild(opt);
+      });
+    }
+  } catch (err) {
+    console.error("Error al preparar lista de gastos pendientes:", err);
+  }
 
   if (asideId) {
     if (titleEl) titleEl.textContent = "✏️ Editar Dinero Apartado";
@@ -1418,7 +1503,20 @@ async function openSetAsideModal(movId = null, cardId = null, personId = null, d
         document.getElementById('setaside-date').value = s.date || new Date().toISOString().split('T')[0];
         document.getElementById('setaside-note').value = s.note || '';
         document.getElementById('setaside-movement-id').value = s.movement_id || '';
+        if (movSelect) movSelect.value = s.movement_id ? String(s.movement_id) : '';
         setMoneyInput(document.getElementById('setaside-amount'), s.amount);
+
+        if (s.movement_id) {
+          const m = currentPendingMovementsList.find(x => x.id === String(s.movement_id));
+          if (m && movInfo) {
+            movInfo.style.display = 'block';
+            movInfo.textContent = `Gasto: ${m.concept} ($${m.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}) • Ya cubierto: $${m.total_aside.toLocaleString('es-MX', {minimumFractionDigits: 2})} • Falta: $${m.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}`;
+          } else if (movInfo) {
+            movInfo.style.display = 'none';
+          }
+        } else if (movInfo) {
+          movInfo.style.display = 'none';
+        }
       }
     } catch (err) {
       console.error("Error cargando apartado para edición:", err);
@@ -1427,17 +1525,25 @@ async function openSetAsideModal(movId = null, cardId = null, personId = null, d
     if (titleEl) titleEl.textContent = "💰 Registrar Dinero Apartado";
     if (submitBtn) submitBtn.textContent = "Confirmar Apartado";
 
-    // Si viene de un movimiento, asegurar tarjeta y persona
-    if (movId && (!cardId || !personId)) {
-      try {
-        const movs = await fetch('/api/movements').then(r => r.json());
-        const m = movs.find(x => String(x.id) === String(movId));
-        if (m) {
-          if (!cardId) cardId = m.card_id;
-          if (!personId) personId = m.person_id;
-          if (!defaultAmount) defaultAmount = m.amount;
+    // Si viene de un movimiento específico
+    if (movId) {
+      if (movSelect) movSelect.value = String(movId);
+      const m = currentPendingMovementsList.find(x => x.id === String(movId));
+      if (m) {
+        cardId = m.card_id;
+        personId = m.person_id;
+        if (!defaultAmount) defaultAmount = m.remaining;
+        if (!document.getElementById('setaside-note').value) {
+          document.getElementById('setaside-note').value = `Apartado: ${m.concept}`;
         }
-      } catch (e) {}
+        if (movInfo) {
+          movInfo.style.display = 'block';
+          movInfo.textContent = `Gasto: ${m.concept} ($${m.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}) • Ya cubierto: $${m.total_aside.toLocaleString('es-MX', {minimumFractionDigits: 2})} • Falta: $${m.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}`;
+        }
+      }
+    } else {
+      if (movSelect) movSelect.value = '';
+      if (movInfo) movInfo.style.display = 'none';
     }
 
     // Si viene con personId pero sin cardId (ej: abierto desde deudores):
@@ -1477,13 +1583,18 @@ async function openSetAsideModal(movId = null, cardId = null, personId = null, d
 async function handleSaveSetAside(e) {
   e.preventDefault();
   const asideId = document.getElementById('setaside-id').value;
+  const movementId = document.getElementById('setaside-movement-id').value || null;
+  let note = document.getElementById('setaside-note').value.trim();
+  if (!note) {
+    note = movementId ? 'Apartado' : 'Apartado General';
+  }
   const payload = {
     card_id: document.getElementById('setaside-card').value,
     person_id: document.getElementById('setaside-person').value,
-    movement_id: document.getElementById('setaside-movement-id').value || null,
+    movement_id: movementId,
     amount: parseMoney(document.getElementById('setaside-amount').value),
     fund_type: document.getElementById('setaside-fund-type').value,
-    note: document.getElementById('setaside-note').value.trim(),
+    note: note,
     date: document.getElementById('setaside-date').value
   };
 
@@ -2892,6 +3003,31 @@ function setupEventListeners() {
   document.getElementById('transfer-from-type').addEventListener('change', updateTransferDestLabel);
   document.getElementById('form-transfer-fund').addEventListener('submit', handleTransferSubmit);
   document.getElementById('form-setaside').addEventListener('submit', handleSaveSetAside);
+
+  const movSelectEl = document.getElementById('setaside-movement-select');
+  if (movSelectEl) {
+    movSelectEl.addEventListener('change', (e) => {
+      const selectedId = e.target.value;
+      const movInfoEl = document.getElementById('setaside-movement-info');
+      document.getElementById('setaside-movement-id').value = selectedId || '';
+
+      if (selectedId) {
+        const m = currentPendingMovementsList.find(x => x.id === String(selectedId));
+        if (m) {
+          if (m.card_id) document.getElementById('setaside-card').value = String(m.card_id);
+          if (m.person_id) document.getElementById('setaside-person').value = String(m.person_id);
+          setMoneyInput(document.getElementById('setaside-amount'), m.remaining);
+          document.getElementById('setaside-note').value = `Apartado: ${m.concept}`;
+          if (movInfoEl) {
+            movInfoEl.style.display = 'block';
+            movInfoEl.textContent = `Gasto: ${m.concept} ($${m.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}) • Ya cubierto: $${m.total_aside.toLocaleString('es-MX', {minimumFractionDigits: 2})} • Falta: $${m.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}`;
+          }
+        }
+      } else {
+        if (movInfoEl) movInfoEl.style.display = 'none';
+      }
+    });
+  }
 
   document.getElementById('btn-new-person').addEventListener('click', () => {
     document.getElementById('form-person').reset();
