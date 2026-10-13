@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="4dp"
+    android:background="@drawable/bg_card_secondary"
+    android:paddingHorizontal="10dp"
+    android:layout_marginBottom="4dp">
+
+    <TextView
+        android:id="@+id/tv_bi_item_concept"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="Internet"
+        android:textColor="#ffffff"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/tv_bi_item_tag"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Fijo"
+        android:textColor="#cbd5e1"
+        android:textSize="10sp"
+        android:background="#33ffffff"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="2dp"
+        android:layout_marginEnd="8dp" />
+
+    <TextView
+        android:id="@+id/tv_bi_item_amount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="$600.00"
+        android:textColor="#4ade80"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:layout_marginEnd="8dp" />
+
+    <TextView
+        android:id="@+id/btn_bi_item_delete"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="✖"
+        android:textColor="#ef4444"
+        android:textSize="14sp"
+        android:padding="4dp" />
+
+</LinearLayout>
+

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="#0f172a"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="10dp"
+    android:layout_marginBottom="6dp">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_pending_mov_concept"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Concepto del gasto"
+            android:textColor="#ffffff"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_pending_mov_details"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="💳 Tarjeta • 2026-10-10"
+            android:textColor="#94a3b8"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/tv_pending_mov_amounts"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Total: $500.00 • Falta: $300.00"
+            android:textColor="#f87171"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/btn_pending_mov_apartar"
+        android:layout_width="wrap_content"
+        android:layout_height="34dp"
+        android:text="💰 Apartar"
+        android:textColor="#4ade80"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:background="?android:attr/selectableItemBackground"
+        android:paddingHorizontal="10dp"
+        android:layout_marginStart="8dp" />
+
+</LinearLayout>

@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/windowBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ajustes y Respaldos"
+            android:textColor="#ffffff"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="16dp" />
+
+        <!-- CARD 1: EXPORT / IMPORT -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="14dp"
+            app:cardBackgroundColor="#131e38"
+            app:cardElevation="3dp"
+            android:layout_marginBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📁 Respaldos y Portabilidad Universal"
+                    android:textColor="#cbd5e1"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Exporta e importa tus datos en formato JSON universal, compatible al 100% con la aplicación Web para PC."
+                    android:textColor="#94a3b8"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="14dp" />
+
+                <!-- EXPORT BUTTON -->
+                <Button
+                    android:id="@+id/btn_settings_export_backup"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="💾 Exportar Respaldo a Cualquier Carpeta (.json)"
+                    android:textColor="#ffffff"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_primary_button"
+                    android:layout_marginBottom="6dp"
+                    app:backgroundTint="@null" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🛡️ Al exportar, tu base de datos interna se mantiene 100% fija y protegida en su ubicación privada de la app."
+                    android:textColor="#64748b"
+                    android:textSize="11sp"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- IMPORT BUTTON -->
+                <Button
+                    android:id="@+id/btn_settings_import_backup"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="📥 Importar Respaldo (.json)"
+                    android:textColor="#38bdf8"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_card_secondary"
+                    app:backgroundTint="@null" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- CARD 2: RESET PERIOD -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="14dp"
+            app:cardBackgroundColor="#131e38"
+            app:cardElevation="3dp"
+            android:layout_marginBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔄 Ciclo Mensual de Tarjetas"
+                    android:textColor="#cbd5e1"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Limpia los gastos ordinarios del periodo actual y apartados ya liquidados. Mantiene intactas tus tarjetas, deudores y planes de Meses Sin Intereses."
+                    android:textColor="#94a3b8"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="12dp" />
+
+                <Button
+                    android:id="@+id/btn_settings_reset_period"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="✂️ Cerrar Periodo Mensual"
+                    android:textColor="#f59e0b"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:background="@drawable/bg_card_secondary"
+                    app:backgroundTint="@null" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- CARD 3: SECURITY -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="14dp"
+            app:cardBackgroundColor="#131e38"
+            app:cardElevation="3dp"
+            android:layout_marginBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🔒 Bóveda de Seguridad"
+                    android:textColor="#cbd5e1"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="12dp" />
+
+                <Button
+                    android:id="@+id/btn_settings_change_password"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="🔑 Cambiar Contraseña Maestra"
+                    android:textColor="#ffffff"
+                    android:textSize="13sp"
+                    android:background="@drawable/bg_card_secondary"
+                    app:backgroundTint="@null" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- CARD 4: FACTORY RESET -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="14dp"
+            app:cardBackgroundColor="#131e38"
+            app:cardElevation="3dp"
+            android:layout_marginBottom="14dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="⚠️ Zona de Peligro"
+                    android:textColor="#ef4444"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Elimina todos los datos de la aplicación y restablece la bóveda al estado inicial de fábrica."
+                    android:textColor="#94a3b8"
+                    android:textSize="12sp"
+                    android:layout_marginBottom="12dp" />
+
+                <Button
+                    android:id="@+id/btn_settings_factory_reset"
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:text="🗑️ Restaurar de Fábrica"
+                    android:textColor="#ef4444"
+                    android:textSize="13sp"
+                    android:background="@drawable/bg_card_secondary"
+                    app:backgroundTint="@null" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- CARD 5: SYSTEM INFO -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="14dp"
+            app:cardBackgroundColor="#070d1d"
+            app:cardElevation="1dp"
+            android:layout_marginBottom="24dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="ℹ️ Información del Sistema"
+                    android:textColor="#cbd5e1"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="• Aplicación 100% Android Nativo (Sin WebViews ni Servidores)\n• Motor: SQLite Local Autónomo (/data/data/.../databases/cardmaster.db)\n• Cifrado: PBKDF2WithHmacSHA256 (100,000 iteraciones)\n• Respaldo: Formato JSON universal para PC Web-App y Android"
+                    android:textColor="#64748b"
+                    android:textSize="11sp"
+                    android:lineSpacingExtra="3dp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+    </LinearLayout>
+</ScrollView>
+

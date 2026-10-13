@@ -1,0 +1,22 @@
+node_modules/
+*.db
+.env
+*.log
+*.pid
+
+__pycache__/
+*.pyc
+
+# Android & Gradle local caches
+.android/
+.android_home/
+.gradle_home/
+.gradle/
+android-sdk/
+jdk-21/
+.vscode/
+build/
+mobile-android/android/.gradle/
+mobile-android/android/app/build/
+mobile-android/android/build/
+local.properties

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@android:color/transparent"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🏛️ Pagar al Banco"
+        android:textColor="#ffffff"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Aplica los fondos apartados como pago hacia tu tarjeta bancaria. Los apartados seleccionados se marcarán como pagados."
+        android:textColor="#94a3b8"
+        android:textSize="12sp"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Selecciona la Tarjeta"
+        android:textColor="#94a3b8"
+        android:textSize="12sp"
+        android:layout_marginBottom="4dp" />
+
+    <Spinner
+        android:id="@+id/spinner_pay_bank_card"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:background="@drawable/bg_input_field"
+        android:layout_marginBottom="12dp" />
+
+    <CheckBox
+        android:id="@+id/cb_pay_full_bank"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Liquidar todo el monto apartado de esta tarjeta"
+        android:textColor="#cbd5e1"
+        android:textSize="13sp"
+        android:checked="true"
+        android:layout_marginBottom="10dp" />
+
+    <LinearLayout
+        android:id="@+id/layout_pay_custom_amount"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Monto a Aplicar ($)"
+            android:textColor="#94a3b8"
+            android:textSize="12sp"
+            android:layout_marginBottom="4dp" />
+
+        <EditText
+            android:id="@+id/et_pay_custom_amount"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_input_field"
+            android:hint="0.00"
+            android:textColor="#ffffff"
+            android:textColorHint="#64748b"
+            android:inputType="numberDecimal"
+            android:paddingHorizontal="12dp"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+</LinearLayout>
+

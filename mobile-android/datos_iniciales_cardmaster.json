@@ -1,0 +1,115 @@
+{
+  "app": "CardMaster",
+  "version": "2.0",
+  "format": "cardmaster-json-backup",
+  "schema_version": 1,
+  "exported_at": 1791923199649,
+  "exported_iso": "2026-10-13T20:26:39.657Z",
+  "cards": [
+    {
+      "id": "card-bbva-platinum",
+      "name": "BBVA Platinum",
+      "credit_limit": 509700,
+      "cutoff_day": 16,
+      "color": "#004481",
+      "logo_base64": null,
+      "display_order": 0,
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "card-stori",
+      "name": "Stori",
+      "credit_limit": 20000,
+      "cutoff_day": 12,
+      "color": "#00a86b",
+      "logo_base64": null,
+      "display_order": 1,
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "card-banamex-costco",
+      "name": "Banamex Costco",
+      "credit_limit": 58000,
+      "cutoff_day": 8,
+      "color": "#0284c7",
+      "logo_base64": null,
+      "display_order": 2,
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "card-hsbc-viva",
+      "name": "HSBC VIVA",
+      "credit_limit": 150000,
+      "cutoff_day": 11,
+      "color": "#db0011",
+      "logo_base64": null,
+      "display_order": 3,
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "card-nu",
+      "name": "NU",
+      "credit_limit": 4000,
+      "cutoff_day": 23,
+      "color": "#820ad1",
+      "logo_base64": null,
+      "display_order": 4,
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "card-rappi-card",
+      "name": "Rappi Card",
+      "credit_limit": 8000,
+      "cutoff_day": 21,
+      "color": "#ff441f",
+      "logo_base64": null,
+      "display_order": 5,
+      "updated_at": 1791923199662
+    }
+  ],
+  "people": [
+    {
+      "id": "person-personal",
+      "name": "Personal",
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "person-plj",
+      "name": "PLJ",
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "person-blj",
+      "name": "BLJ",
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "person-gjg",
+      "name": "GJG",
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "person-elh",
+      "name": "ELH",
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "person-jess",
+      "name": "Jess",
+      "updated_at": 1791923199662
+    },
+    {
+      "id": "person-gaby",
+      "name": "Gaby",
+      "updated_at": 1791923199662
+    }
+  ],
+  "movements": [],
+  "installment_plans": [],
+  "set_asides": [],
+  "budgets": [],
+  "budget_items": [],
+  "config": {
+    "inflation_rate": "4.5"
+  }
+}

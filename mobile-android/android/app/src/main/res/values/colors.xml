@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#0b1329</color>
+    <color name="colorPrimaryDark">#070d1d</color>
+    <color name="colorAccent">#38bdf8</color>
+    <color name="windowBackground">#0b1329</color>
+    <color name="cardBackground">#131e38</color>
+    <color name="cardBackgroundSecondary">#1e293b</color>
+    <color name="inputBackground">#1e293b</color>
+    <color name="textColorPrimary">#f8fafc</color>
+    <color name="textColorSecondary">#94a3b8</color>
+    <color name="textColorMuted">#64748b</color>
+    <color name="accentBlue">#38bdf8</color>
+    <color name="accentGreen">#4ade80</color>
+    <color name="accentAmber">#f59e0b</color>
+    <color name="accentRed">#ef4444</color>
+    <color name="accentPurple">#a855f7</color>
+    <color name="dividerColor">#334155</color>
+</resources>

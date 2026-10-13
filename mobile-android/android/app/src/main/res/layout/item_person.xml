@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:cardCornerRadius="16dp"
+    app:cardBackgroundColor="#131e38"
+    app:cardElevation="2dp"
+    android:layout_marginBottom="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:id="@+id/tv_item_person_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Carlos Mendoza"
+                android:textColor="#ffffff"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- ETIQUETA DE DEUDA LIMPIA (SIN CAJA NI RECTÁNGULO) -->
+            <TextView
+                android:id="@+id/tv_item_person_owed_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Debe $450.00"
+                android:textColor="#f87171"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Gastado en Tarjetas"
+                    android:textColor="#64748b"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/tv_item_person_spent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="$1,200.00"
+                    android:textColor="#cbd5e1"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Apartado / Pagado"
+                    android:textColor="#64748b"
+                    android:textSize="11sp" />
+
+                <TextView
+                    android:id="@+id/tv_item_person_delivered"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="$750.00"
+                    android:textColor="#4ade80"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- GASTOS PENDIENTES POR APARTAR DE ESTA PERSONA -->
+        <LinearLayout
+            android:id="@+id/layout_person_pending_movements_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="12dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⏳ Gastos pendientes de apartar:"
+                android:textColor="#fbbf24"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="6dp" />
+
+            <LinearLayout
+                android:id="@+id/layout_person_pending_movements_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#1e293b"
+            android:layout_marginBottom="10dp" />
+
+        <!-- ACCIONES LIMPIAS -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end">
+
+            <Button
+                android:id="@+id/btn_item_person_filter"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:text="🔍 Ver Gastos"
+                android:textColor="#38bdf8"
+                android:textSize="12sp"
+                android:background="?android:attr/selectableItemBackground"
+                android:paddingHorizontal="10dp"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_item_person_delete"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:text="🗑️ Eliminar"
+                android:textColor="#ef4444"
+                android:textSize="12sp"
+                android:background="?android:attr/selectableItemBackground"
+                android:paddingHorizontal="10dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</androidx.cardview.widget.CardView>

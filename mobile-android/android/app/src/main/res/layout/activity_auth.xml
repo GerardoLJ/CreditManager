@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/scroll_auth_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:fitsSystemWindows="true"
+    android:background="#0b1329">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="24dp">
+
+        <!-- LOGO & ICON -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="💳"
+            android:textSize="52sp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- TITULO -->
+        <TextView
+            android:id="@+id/tv_auth_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CardMaster"
+            android:textColor="#ffffff"
+            android:textSize="26sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp" />
+
+        <!-- SUBTITULO -->
+        <TextView
+            android:id="@+id/tv_auth_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Bóveda Local Autónoma (100% Nativo)"
+            android:textColor="#94a3b8"
+            android:textSize="14sp"
+            android:layout_marginBottom="24dp"
+            android:textAlignment="center" />
+
+        <!-- CARD FORMULARIO -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="8dp"
+            app:cardBackgroundColor="#131e38">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <!-- STATUS INDICATOR (LIMPIO, SIN CAJAS NI RECTÁNGULOS) -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginBottom="18dp">
+
+                    <View
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:background="@drawable/bg_dot_green"
+                        android:layout_marginEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tv_auth_status_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Bóveda SQLite 100% Offline"
+                        android:textColor="#4ade80"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- INPUT PASSWORD -->
+                <TextView
+                    android:id="@+id/tv_pwd_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Contraseña Maestra"
+                    android:textColor="#cbd5e1"
+                    android:textSize="14sp"
+                    android:layout_marginBottom="6dp" />
+
+                <EditText
+                    android:id="@+id/et_master_password"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:background="@drawable/bg_input_field"
+                    android:hint="Ingresa tu contraseña"
+                    android:textColorHint="#64748b"
+                    android:textColor="#ffffff"
+                    android:inputType="textPassword"
+                    android:paddingHorizontal="14dp"
+                    android:textSize="15sp"
+                    android:layout_marginBottom="14dp" />
+
+                <!-- INPUT CONFIRM PASSWORD (SOLO SETUP) -->
+                <LinearLayout
+                    android:id="@+id/layout_confirm_password"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Confirmar Contraseña"
+                        android:textColor="#cbd5e1"
+                        android:textSize="14sp"
+                        android:layout_marginBottom="6dp" />
+
+                    <EditText
+                        android:id="@+id/et_master_password_confirm"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:background="@drawable/bg_input_field"
+                        android:hint="Repite tu contraseña"
+                        android:textColorHint="#64748b"
+                        android:textColor="#ffffff"
+                        android:inputType="textPassword"
+                        android:paddingHorizontal="14dp"
+                        android:textSize="15sp"
+                        android:layout_marginBottom="14dp" />
+                </LinearLayout>
+
+                <!-- ERROR TEXT -->
+                <TextView
+                    android:id="@+id/tv_auth_error"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#f87171"
+                    android:textSize="13sp"
+                    android:visibility="gone"
+                    android:layout_marginBottom="10dp" />
+
+                <!-- BOTON PRINCIPAL -->
+                <Button
+                    android:id="@+id/btn_auth_submit"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:background="@drawable/bg_primary_button"
+                    android:text="Desbloquear"
+                    android:textColor="#ffffff"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    app:backgroundTint="@null" />
+
+                <!-- ACCIONES ADICIONALES -->
+                <Button
+                    android:id="@+id/btn_auth_import_json"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="📥 Importar Respaldo (.json)"
+                    android:textColor="#38bdf8"
+                    android:textSize="13sp"
+                    android:background="?android:attr/selectableItemBackground" />
+
+                <Button
+                    android:id="@+id/btn_auth_factory_reset"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="⚠️ Restaurar de Fábrica"
+                    android:textColor="#ef4444"
+                    android:textSize="12sp"
+                    android:visibility="gone"
+                    android:background="?android:attr/selectableItemBackground" />
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="CardMaster Nativo • Android SQLite Local"
+            android:textColor="#64748b"
+            android:textSize="12sp"
+            android:layout_marginTop="20dp" />
+
+    </LinearLayout>
+</ScrollView>

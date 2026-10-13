@@ -1,0 +1,3233 @@
+
+// ==============================================================
+// GESTIÓN DE MOTOR AUTÓNOMO (LOCAL-ENGINE.JS ACTIVO)
+// ==============================================================
+// local-engine.js se encarga de interceptar y almacenar todo localmente
+// en la memoria privada del celular, permitiendo uso 100% offline sin servidores.
+
+// Función de sincronización segura para operaciones CRUD (Local-First)
+async function syncPhysicalDbFile() {
+  try {
+    if (typeof loadDbInfo === 'function') {
+      await loadDbInfo();
+    }
+  } catch (e) {
+    console.debug('Aviso syncPhysicalDbFile:', e);
+  }
+}
+window.syncPhysicalDbFile = syncPhysicalDbFile;
+
+// ==============================================================
+// FORMATEO DE MONEDA CON COMAS PARA MILES Y PUNTO PARA DECIMALES
+// ==============================================================
+function parseMoney(val) {
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (!val) return 0;
+  const clean = val.toString().replace(/,/g, '').trim();
+  const num = parseFloat(clean);
+  return isNaN(num) ? 0 : num;
+}
+
+function formatMoneyString(val) {
+  if (!val) return '';
+  val = val.toString().replace(/[^0-9.]/g, '');
+  const parts = val.split('.');
+  if (parts.length > 2) {
+    parts = [parts[0], parts.slice(1).join('')];
+  }
+  let intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (parts.length > 1) {
+    return intPart + '.' + parts[1].slice(0, 2);
+  }
+  return intPart;
+}
+
+function setMoneyInput(inputEl, val) {
+  if (!inputEl) return;
+  if (val === null || val === undefined || val === '') {
+    inputEl.value = '';
+    return;
+  }
+  const num = parseMoney(val);
+  inputEl.value = num.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function setupMoneyInput(input) {
+  if (!input || input._moneyAttached) return;
+  input._moneyAttached = true;
+  
+  input.addEventListener('input', () => {
+    const start = input.selectionStart;
+    const oldVal = input.value;
+    const clean = oldVal.replace(/[^0-9.]/g, '');
+    const formatted = formatMoneyString(clean);
+    
+    const cleanBefore = oldVal.slice(0, start).replace(/[^0-9.]/g, '');
+    input.value = formatted;
+    
+    let newPos = formatted.length;
+    let seenClean = 0;
+    for (let i = 0; i < formatted.length; i++) {
+      if (formatted[i] !== ',') {
+        seenClean++;
+      }
+      if (seenClean === cleanBefore.length) {
+        newPos = i + 1;
+        break;
+      }
+    }
+    input.setSelectionRange(newPos, newPos);
+  });
+
+  input.addEventListener('blur', () => {
+    const num = parseMoney(input.value);
+    if (!isNaN(num) && input.value.trim() !== '') {
+      input.value = num.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+  });
+}
+
+function initAllMoneyInputs() {
+  document.querySelectorAll('.money-input').forEach(setupMoneyInput);
+}
+
+function openTransferModal(preselectedCardId = null) {
+  document.getElementById('form-transfer-fund').reset();
+  const cardSelect = document.getElementById('transfer-card');
+  if (preselectedCardId) {
+    cardSelect.value = String(preselectedCardId);
+  }
+  updateTransferDestLabel();
+  document.getElementById('modal-transfer-fund').classList.remove('hidden');
+}
+
+function updateTransferDestLabel() {
+  const fromVal = document.getElementById('transfer-from-type').value;
+  document.getElementById('transfer-to-type').value = fromVal === 'Efectivo' ? '💳 Débito' : '💵 Efectivo';
+}
+
+async function toggleFundLocation(setId) {
+  try {
+    const res = await fetch(`/api/set-asides/${setId}/toggle-fund`, { method: 'PATCH' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    showToast(`Ubicación cambiada a ${data.newFundType}`, "success");
+    refreshAllData();
+  } catch (err) {
+    showToast(err.message || "Error al cambiar ubicación", "error");
+  }
+}
+
+async function handleTransferSubmit(e) {
+  e.preventDefault();
+  const payload = {
+    card_id: document.getElementById('transfer-card').value,
+    from_type: document.getElementById('transfer-from-type').value,
+    amount: parseMoney(document.getElementById('transfer-amount').value),
+    note: document.getElementById('transfer-note').value.trim()
+  };
+
+  try {
+    const res = await fetch('/api/set-asides/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    document.getElementById('modal-transfer-fund').classList.add('hidden');
+    await refreshAllData();
+    await syncPhysicalDbFile();
+    showToast(`Traspaso de $${data.transferred} realizado (${data.from} ➔ ${data.to})`, "success");
+  } catch (err) {
+    showToast(err.message || "Error al realizar traspaso", "error");
+  }
+}
+
+
+function toggleBudgetAccordion(budgetId) {
+  const body = document.getElementById(`budget-body-${budgetId}`);
+  const chevron = document.getElementById(`chevron-${budgetId}`);
+  if (!body) return;
+  const isCollapsed = body.classList.toggle('collapsed');
+  if (chevron) {
+    chevron.classList.toggle('collapsed', isCollapsed);
+  }
+}
+
+function setupCollapsibles() {
+  const toggleBtn = document.getElementById('toggle-setasides-table');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const wrapper = document.getElementById('setasides-table-wrapper');
+      const chevron = document.getElementById('setasides-chevron');
+      if (!wrapper) return;
+      const isCollapsed = wrapper.classList.toggle('collapsed');
+      if (chevron) chevron.classList.toggle('collapsed', isCollapsed);
+    });
+  }
+}
+
+/**
+ * CardMaster Client Engine
+ * - Modelo Local-First con persistencia en IndexedDB y respaldos JSON universales
+ * - Drag & Drop estilizado para logos y sincronización
+ * - Gestión completa de Apartados / Fondos de Pago
+ */
+
+let currentCalYear = new Date().getFullYear();
+let currentCalMonth = new Date().getMonth();
+let selectedCalDay = new Date().getDate();
+let currentCardLogoBase64 = null;
+
+// --- INICIALIZACIÓN ---
+window.addEventListener('DOMContentLoaded', async () => {
+  setupTheme();
+  initAllMoneyInputs();
+  setupEventListeners();
+  setupDragAndDrop();
+  setupServerConnectionControls();
+  checkAuthStatus();
+  await initPhysicalStorage();
+});
+
+// --- GESTIÓN DE CONEXIÓN CON EL SERVIDOR NODE.JS ---
+function getServerTargetUrl() {
+  const custom = localStorage.getItem('cardmaster_server_url') || '';
+  if (custom) return custom;
+  return window.location.origin.startsWith('http') ? window.location.origin : 'http://localhost:3000';
+}
+
+function updateServerUI(connected) {
+  const dot = document.getElementById('server-status-dot');
+  const pillText = document.getElementById('server-pill-text');
+  const banner = document.getElementById('server-offline-banner');
+  const submitBtn = document.getElementById('btn-auth-submit');
+  
+  const savedUrl = localStorage.getItem('cardmaster_server_url') || '';
+  const isRemote = Boolean(savedUrl && !savedUrl.includes('localhost') && !savedUrl.includes('127.0.0.1'));
+
+  if (!isRemote) {
+    if (dot) dot.className = 'status-dot green';
+    if (pillText) pillText.textContent = 'Bóveda Local (100% Offline)';
+    if (banner) banner.classList.add('hidden');
+    if (submitBtn) submitBtn.removeAttribute('disabled');
+  } else {
+    if (connected) {
+      if (dot) dot.className = 'status-dot green';
+      if (pillText) pillText.textContent = 'Conectado a PC';
+      if (banner) banner.classList.add('hidden');
+      if (submitBtn) submitBtn.removeAttribute('disabled');
+    } else {
+      if (dot) dot.className = 'status-dot red';
+      if (pillText) pillText.textContent = 'Servidor PC: Desconectado';
+      if (banner) banner.classList.remove('hidden');
+    }
+  }
+}
+
+function setupServerConnectionControls() {
+  const toggleBtn = document.getElementById('btn-server-settings-toggle');
+  const openBtn = document.getElementById('btn-open-server-config');
+  const closeBtn = document.getElementById('btn-close-server-config');
+  const retryBtn = document.getElementById('btn-retry-connection');
+  const settingsBox = document.getElementById('server-settings-box');
+  const modeLocal = document.getElementById('mode-local') || document.getElementById('mode-termux');
+  const modeWifi = document.getElementById('mode-wifi');
+  const customIpGroup = document.getElementById('custom-ip-group');
+  const customIpInput = document.getElementById('custom-server-ip');
+  const saveBtn = document.getElementById('btn-save-server-config');
+
+  const savedUrl = localStorage.getItem('cardmaster_server_url') || '';
+  if (savedUrl && !savedUrl.includes('localhost') && !savedUrl.includes('127.0.0.1')) {
+    if (modeWifi) modeWifi.checked = true;
+    if (customIpGroup) customIpGroup.classList.remove('hidden');
+    if (customIpInput) customIpInput.value = savedUrl;
+  } else {
+    if (modeLocal) modeLocal.checked = true;
+    if (customIpGroup) customIpGroup.classList.add('hidden');
+    if (customIpInput) customIpInput.value = 'http://192.168.10.122:3000';
+  }
+
+  function toggleBox(show) {
+    if (!settingsBox) return;
+    if (typeof show === 'boolean') {
+      settingsBox.classList.toggle('hidden', !show);
+    } else {
+      settingsBox.classList.toggle('hidden');
+    }
+  }
+
+  if (toggleBtn) toggleBtn.addEventListener('click', () => toggleBox());
+  if (openBtn) openBtn.addEventListener('click', () => toggleBox(true));
+  if (closeBtn) closeBtn.addEventListener('click', () => toggleBox(false));
+
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      showToast("Comprobando conexión...", "info");
+      checkAuthStatus();
+    });
+  }
+
+  if (modeLocal) {
+    modeLocal.addEventListener('change', () => {
+      if (customIpGroup) customIpGroup.classList.add('hidden');
+    });
+  }
+
+  if (modeWifi) {
+    modeWifi.addEventListener('change', () => {
+      if (customIpGroup) customIpGroup.classList.remove('hidden');
+      if (customIpInput && !customIpInput.value) {
+        customIpInput.value = 'http://192.168.10.122:3000';
+      }
+      if (customIpInput) customIpInput.focus();
+    });
+  }
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      if (modeWifi && modeWifi.checked) {
+        let val = (customIpInput ? customIpInput.value : '').trim();
+        if (!val) {
+          showToast("Ingresa la dirección IP de tu PC", "warning");
+          return;
+        }
+        if (!val.startsWith('http://') && !val.startsWith('https://')) {
+          val = 'http://' + val;
+        }
+        localStorage.setItem('cardmaster_server_url', val);
+        showToast("Conectando a PC: " + val, "info");
+      } else {
+        localStorage.removeItem('cardmaster_server_url');
+        showToast("Modo Autónomo Local activado", "success");
+      }
+
+      toggleBox(false);
+      checkAuthStatus();
+    });
+  }
+}
+
+function setupTheme() {
+  const saved = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  document.getElementById('theme-icon').textContent = saved === 'dark' ? '🌙' : '☀️';
+
+  document.getElementById('theme-toggle-btn').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    document.getElementById('theme-icon').textContent = next === 'dark' ? '🌙' : '☀️';
+    localStorage.setItem('theme', next);
+  });
+}
+
+// --- AUTENTICACIÓN ---
+async function checkAuthStatus() {
+  updateServerUI(true);
+
+  try {
+    const res = await fetch('/api/auth/status');
+    const data = await res.json().catch(() => ({ isConfigured: false }));
+    updateServerUI(true);
+    const btnAuthFactory = document.getElementById('btn-auth-factory-reset');
+    if (!data || !data.isConfigured) {
+      document.getElementById('auth-title').textContent = "Configurar Bóveda Local";
+      document.getElementById('auth-subtitle').textContent = "Crea tu contraseña maestra local (100% Offline)";
+      document.getElementById('setup-confirm-group').classList.remove('hidden');
+      document.getElementById('btn-auth-submit').textContent = "Crear Bóveda";
+      if (btnAuthFactory) btnAuthFactory.classList.add('hidden');
+    } else {
+      document.getElementById('auth-title').textContent = "Control de Tarjetas";
+      document.getElementById('auth-subtitle').textContent = "Almacenamiento Seguro Local (IndexedDB)";
+      document.getElementById('setup-confirm-group').classList.add('hidden');
+      document.getElementById('btn-auth-submit').textContent = "Desbloquear";
+      if (btnAuthFactory) btnAuthFactory.classList.remove('hidden');
+    }
+    await updateStorageDisplay();
+  } catch (err) {
+    console.warn("Aviso comprobando autenticación, asegurando interfaz:", err);
+    updateServerUI(true);
+    document.getElementById('auth-title').textContent = "Configurar Bóveda Local";
+    document.getElementById('auth-subtitle').textContent = "Crea tu contraseña maestra local (100% Offline)";
+    document.getElementById('setup-confirm-group').classList.remove('hidden');
+    document.getElementById('btn-auth-submit').textContent = "Crear Bóveda";
+  }
+}
+
+async function handleAuth() {
+  const pwd = document.getElementById('master-pwd').value;
+  const confirm = document.getElementById('master-pwd-confirm').value;
+  const isSetup = !document.getElementById('setup-confirm-group').classList.contains('hidden');
+  const errDiv = document.getElementById('auth-error');
+  errDiv.classList.add('hidden');
+
+  try {
+    if (isSetup) {
+      if (pwd !== confirm) {
+        errDiv.textContent = "Las contraseñas no coinciden";
+        errDiv.classList.remove('hidden');
+        return;
+      }
+      const res = await fetch('/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+    } else {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+    }
+
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('app-container').classList.remove('hidden');
+    refreshAllData();
+    showToast("Bóveda SQLite desbloqueada", "success");
+  } catch (err) {
+    errDiv.textContent = err.message || "Error al autenticar";
+    errDiv.classList.remove('hidden');
+  }
+}
+
+function lockApp() {
+  document.getElementById('app-container').classList.add('hidden');
+  document.getElementById('auth-screen').classList.remove('hidden');
+  document.getElementById('master-pwd').value = '';
+  showToast("Bóveda bloqueada");
+}
+
+// --- REFRESCAR TODO EL MODELO ---
+async function refreshAllData() {
+  await loadInflationConfig();
+  loadDbInfo();
+  await Promise.all([
+    renderCards(),
+    renderMovements(),
+    renderSetAsides(),
+    renderDebts(),
+    renderCalendar(),
+    renderBudgets(),
+    populateSelects()
+  ]);
+}
+
+// --- TARJETAS ---
+async function renderCards() {
+  const container = document.getElementById('cards-grid');
+  container.innerHTML = '';
+
+  const [cardsRes, movsRes, setAsideRes, peopleRes] = await Promise.all([
+    fetch('/api/cards').then(r => r.json()),
+    fetch('/api/movements').then(r => r.json()),
+    fetch('/api/set-asides').then(r => r.json()),
+    fetch('/api/people').then(r => r.json())
+  ]);
+
+  if (!cardsRes.length) {
+    container.innerHTML = `<div class="card-box" style="grid-column: 1/-1; text-align: center; color: var(--text-muted);">
+      No hay tarjetas registradas aún. Presiona <strong>+ Nueva Tarjeta</strong> para registrar una.
+    </div>`;
+    return;
+  }
+
+  // Orden personalizado persistente con Drag & Drop
+  try {
+    const savedOrder = JSON.parse(localStorage.getItem('cardmaster_cards_order') || '[]');
+    if (Array.isArray(savedOrder) && savedOrder.length) {
+      cardsRes.sort((a, b) => {
+        const idxA = savedOrder.indexOf(a.id);
+        const idxB = savedOrder.indexOf(b.id);
+        if (idxA === -1 && idxB === -1) return 0;
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+      });
+    }
+  } catch (err) {
+    console.error("Error leyendo orden de tarjetas:", err);
+  }
+
+  let globalTotalDebt = 0;
+  let globalTotalInHand = 0;
+  let globalTotalMissing = 0;
+  const cardsCalculated = [];
+
+  for (const card of cardsRes) {
+    const cardIdStr = String(card.id);
+
+    // Gastos regulares de esta tarjeta
+    const cardMovs = movsRes.filter(m => String(m.card_id) === cardIdStr);
+    const regularSpent = cardMovs.reduce((sum, m) => sum + m.amount, 0);
+
+    // MSI pendientes de esta tarjeta
+    const msiRes = await fetch(`/api/msi/${card.id}`).then(r => r.json());
+    const msiPending = msiRes.reduce((sum, p) => sum + (p.total_amount - (p.total_amount / p.months * p.paid_months)), 0);
+
+    // Apartados y Pagos de esta tarjeta (incluyendo los enlazados a movimientos de esta tarjeta)
+    const cardSetAsides = setAsideRes.filter(s => {
+      if (String(s.card_id) === cardIdStr) return true;
+      if (s.movement_id) {
+        const m = movsRes.find(x => String(x.id) === String(s.movement_id));
+        if (m && String(m.card_id) === cardIdStr) return true;
+      }
+      return false;
+    });
+
+    const cardPaidToBank = cardSetAsides.reduce((sum, s) => sum + (Number(s.paid_amount) || (s.is_paid ? s.amount : 0)), 0);
+    const cardInHand = cardSetAsides.reduce((sum, s) => sum + Math.max(0, s.amount - (Number(s.paid_amount) || (s.is_paid ? s.amount : 0))), 0);
+
+    // Deuda real al banco: gastos reducidos por pagos al banco + MSI
+    const totalDebt = Math.max(0, (regularSpent - cardPaidToBank) + msiPending);
+    const available = Math.max(0, card.credit_limit - totalDebt);
+    const percent = Math.min(100, (totalDebt / card.credit_limit) * 100);
+    const missingToSetAside = Math.max(0, totalDebt - cardInHand);
+
+    globalTotalDebt += totalDebt;
+    globalTotalInHand += cardInHand;
+    globalTotalMissing += missingToSetAside;
+
+    let missingNote = '';
+    if (totalDebt <= 0.001) {
+      missingNote = '<small style="font-size:0.75rem; font-weight:normal; color:#a7f3d0;">(Sin Deuda)</small>';
+    } else if (missingToSetAside <= 0.001) {
+      missingNote = '<small style="font-size:0.75rem; font-weight:normal; color:#a7f3d0;">(100% Cubierto)</small>';
+    }
+
+    let statusClass = 'badge-zero';
+    let statusText = '✅ Sin Deuda';
+    if (totalDebt > 0.001) {
+      if (missingToSetAside <= 0.001) {
+        statusClass = 'badge-covered';
+        statusText = '✅ 100% Cubierto';
+      } else if (cardInHand > 0.001) {
+        statusClass = 'badge-partial';
+        statusText = `⚠️ Falta $${missingToSetAside.toLocaleString('es-MX', {maximumFractionDigits: 0})}`;
+      } else {
+        statusClass = 'badge-pending';
+        statusText = '⚠️ Sin Apartar';
+      }
+    }
+
+    // Desglose de adeudos por persona / deudor para esta tarjeta específica (solo personas que deben > 0)
+    const debtorsWithDebt = [];
+    peopleRes.forEach(p => {
+      const pIdStr = String(p.id);
+      const pMovs = cardMovs.filter(m => String(m.person_id) === pIdStr).reduce((sum, m) => sum + m.amount, 0);
+      const pMsi = msiRes.filter(item => String(item.person_id) === pIdStr).reduce((sum, item) => sum + (item.total_amount - (item.total_amount / item.months * item.paid_months)), 0);
+      const pConsumed = pMovs + pMsi;
+      const pCovered = cardSetAsides.filter(s => {
+        if (String(s.person_id) === pIdStr) return true;
+        if (s.movement_id) {
+          const m = movsRes.find(x => String(x.id) === String(s.movement_id));
+          if (m && String(m.person_id) === pIdStr) return true;
+        }
+        return false;
+      }).reduce((sum, s) => sum + s.amount, 0);
+      const pDebt = Math.max(0, pConsumed - pCovered);
+      if (pDebt > 0.001) {
+        debtorsWithDebt.push({ id: p.id, name: p.name, debt: pDebt });
+      }
+    });
+
+    let progressClass = '';
+    if (percent > 70) progressClass = 'warning';
+    if (percent > 90) progressClass = 'danger';
+
+    cardsCalculated.push({
+      card,
+      regularSpent,
+      msiPending,
+      cardPaidToBank,
+      cardInHand,
+      totalDebt,
+      available,
+      percent,
+      missingToSetAside,
+      missingNote,
+      debtorsWithDebt,
+      progressClass,
+      statusClass,
+      statusText
+    });
+  }
+
+  // Renderizar Resumen General y Desglose por Tarjeta
+  const summaryBox = document.getElementById('cards-debt-summary');
+  if (summaryBox) {
+    summaryBox.innerHTML = `
+      <div class="cards-debt-summary-card">
+        <div class="cards-debt-summary-header" onclick="toggleCardsDebtBreakdown()" title="Toca para ver u ocultar el desglose de deudas por tarjeta">
+          <div class="cards-debt-main">
+            <span class="cards-debt-label">💳 Deuda Total General (Todas las tarjetas)</span>
+            <span class="cards-debt-val">$${globalTotalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+          </div>
+          <div class="cards-debt-submetrics">
+            <div class="cards-debt-pill in-hand">
+              <span class="pill-icon">💰</span>
+              <div class="pill-content">
+                <span class="pill-label">Apartado en Mano</span>
+                <span class="pill-val">$${globalTotalInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+              </div>
+            </div>
+            <div class="cards-debt-pill ${globalTotalMissing > 0 ? 'missing' : 'covered'}">
+              <span class="pill-icon">${globalTotalMissing > 0 ? '⚠️' : '✅'}</span>
+              <div class="pill-content">
+                <span class="pill-label">${globalTotalMissing > 0 ? 'Falta por Apartar' : 'Deuda Cubierta'}</span>
+                <span class="pill-val">$${globalTotalMissing.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cards-debt-toggle-bar" onclick="toggleCardsDebtBreakdown()">
+          <span id="cards-debt-toggle-text">📊 Ver Desglose por Tarjeta (${cardsCalculated.length})</span>
+          <span id="cards-debt-toggle-icon" class="toggle-icon">▼</span>
+        </div>
+
+        <div id="cards-debt-collapsible" class="cards-debt-collapsible collapsed">
+          <div class="cards-debt-divider"></div>
+
+          <div class="cards-debt-breakdown-header">
+            <span class="breakdown-title">📊 Desglose de Deuda por Tarjeta:</span>
+            <span class="breakdown-hint">${cardsCalculated.length} ${cardsCalculated.length === 1 ? 'tarjeta' : 'tarjetas'}</span>
+          </div>
+
+          <div class="cards-debt-breakdown-grid">
+            ${cardsCalculated.map(item => `
+              <div class="debt-breakdown-card-item" onclick="scrollToCard('${item.card.id}')" title="Ubicar ${escapeHtml(item.card.name)}">
+                <div class="breakdown-card-top">
+                  <div class="breakdown-card-identity">
+                    <span class="card-color-dot" style="background-color: ${item.card.color || '#3b82f6'};"></span>
+                    <span class="breakdown-card-name">${escapeHtml(item.card.name)}</span>
+                  </div>
+                  <span class="breakdown-status-badge ${item.statusClass}">
+                    ${item.statusText}
+                  </span>
+                </div>
+                <div class="breakdown-card-body">
+                  <div class="breakdown-debt-row">
+                    <span class="breakdown-debt-label">Debe al banco:</span>
+                    <span class="breakdown-debt-value ${item.totalDebt > 0 ? 'has-debt' : 'no-debt'}">
+                      $${item.totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                    </span>
+                  </div>
+                  ${item.totalDebt > 0 ? `
+                    <div class="breakdown-extra-row">
+                      <span>Apartado: <strong>$${item.cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
+                      <span style="color: ${item.missingToSetAside > 0 ? '#f59e0b' : '#10b981'}; font-weight:600;">
+                        ${item.missingToSetAside > 0 ? `Falta: $${item.missingToSetAside.toLocaleString('es-MX', {minimumFractionDigits: 2})}` : '100% Cubierto'}
+                      </span>
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Renderizar las Tarjetas individuales en el Grid
+  cachedCardsList = cardsCalculated.map(item => item.card);
+  for (const item of cardsCalculated) {
+    const card = item.card;
+    const cardEl = document.createElement('div');
+    cardEl.className = 'credit-card-ui';
+    cardEl.dataset.cardId = card.id;
+    cardEl.setAttribute('draggable', 'true');
+    cardEl.style.backgroundColor = card.color || '#1e293b';
+
+    cardEl.innerHTML = `
+      <div class="card-top">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="card-bank-name">${escapeHtml(card.name)}</div>
+          <button type="button" class="btn-card-move" onclick="event.stopPropagation(); openMoveCardModal('${card.id}')" title="Mover a otra posición">⇅ Mover</button>
+          <span class="card-drag-indicator" title="Arrastra esta tarjeta para cambiar su orden">⠿</span>
+        </div>
+        ${card.logo_base64 ? `<img src="${card.logo_base64}" class="card-logo-img" alt="logo">` : ''}
+      </div>
+      <div class="card-metrics">
+        <div class="metric-row">
+          <span>Límite Total:</span>
+          <span class="metric-val">$${card.credit_limit.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+        </div>
+        <div class="metric-row">
+          <span>Disponible:</span>
+          <span class="metric-val" style="color: ${item.available > 0 ? '#10b981' : '#ef4444'}">
+            $${item.available.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+          </span>
+        </div>
+        <div class="metric-row">
+          <span>Deuda al Banco:</span>
+          <span class="metric-val">$${item.totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+        </div>
+        <div class="metric-row" style="margin-top: 6px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.2);">
+          <span style="color: #6ee7b7;">💰 Apartado / En Mano:</span>
+          <span class="metric-val" style="color: #6ee7b7;">$${item.cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+        </div>
+        <div class="metric-row">
+          <span style="color: ${item.missingToSetAside > 0 ? '#f59e0b' : '#34d399'}; font-weight: 600;">
+            ${item.missingToSetAside > 0 ? '⚠️ Falta por Apartar:' : '✅ Falta por Apartar:'}
+          </span>
+          <span class="metric-val" style="color: ${item.missingToSetAside > 0 ? '#f59e0b' : '#34d399'}; font-weight: 700;">
+            $${item.missingToSetAside.toLocaleString('es-MX', {minimumFractionDigits: 2})} ${item.missingNote}
+          </span>
+        </div>
+        <div class="card-progress-bar">
+          <div class="card-progress-fill ${item.progressClass}" style="width: ${item.percent}%;"></div>
+        </div>
+        ${item.debtorsWithDebt.length > 0 ? `
+        <div class="card-debtors-wrap">
+          <div class="card-debtors-label">👥 Deudores con saldo pendiente:</div>
+          <div class="card-debtors-list">
+            ${item.debtorsWithDebt.map(d => `
+              <span class="debtor-chip">
+                <span class="debtor-chip-name">${escapeHtml(d.name)}:</span>
+                <span class="debtor-chip-amount">$${d.debt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+              </span>
+            `).join('')}
+          </div>
+        </div>` : ''}
+      </div>
+      <div class="card-bottom">
+        <span>Corte: Día ${card.cutoff_day}</span>
+        <span>Ventana Pago: Días ${card.cutoff_day + 1} al ${card.cutoff_day + 15}</span>
+      </div>
+      <div class="card-ui-actions">
+        <button class="btn btn-sm btn-secondary" onclick="openSetAsideModal(null, '${card.id}', null, '')">💰 Apartar</button>
+        <button class="btn btn-sm btn-secondary" onclick="viewCardDetails('${card.id}')">📋 Detalle / MSI</button>
+        <button class="btn btn-sm btn-secondary" onclick="editCard('${card.id}')">✏️</button>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteCard('${card.id}')">🗑️</button>
+      </div>
+    `;
+    container.appendChild(cardEl);
+  }
+
+  setupCardDragAndDrop();
+}
+
+function scrollToCard(cardId) {
+  const cardEl = document.querySelector(`.credit-card-ui[data-card-id="${cardId}"]`);
+  if (cardEl) {
+    cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    cardEl.classList.remove('card-highlight-pulse');
+    void cardEl.offsetWidth;
+    cardEl.classList.add('card-highlight-pulse');
+    setTimeout(() => {
+      cardEl.classList.remove('card-highlight-pulse');
+    }, 1500);
+  }
+}
+window.scrollToCard = scrollToCard;
+
+function toggleCardsDebtBreakdown() {
+  const el = document.getElementById('cards-debt-collapsible');
+  const txt = document.getElementById('cards-debt-toggle-text');
+  const icon = document.getElementById('cards-debt-toggle-icon');
+  if (!el) return;
+
+  const isCollapsed = el.classList.contains('collapsed');
+  if (isCollapsed) {
+    el.classList.remove('collapsed');
+    if (txt) txt.textContent = "📊 Ocultar Desglose por Tarjeta";
+    if (icon) icon.textContent = "▲";
+  } else {
+    el.classList.add('collapsed');
+    const count = el.querySelectorAll('.debt-breakdown-card-item').length;
+    if (txt) txt.textContent = `📊 Ver Desglose por Tarjeta (${count})`;
+    if (icon) icon.textContent = "▼";
+  }
+}
+window.toggleCardsDebtBreakdown = toggleCardsDebtBreakdown;
+
+function setupCardDragAndDrop() {
+  const container = document.getElementById('cards-grid');
+  const cards = container.querySelectorAll('.credit-card-ui');
+
+  cards.forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      if (e.target.closest('button') || e.target.closest('input')) {
+        e.preventDefault();
+        return;
+      }
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', card.dataset.cardId);
+    });
+
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      cards.forEach(c => c.classList.remove('drag-over'));
+      saveCardsOrder();
+    });
+
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const dragging = container.querySelector('.credit-card-ui.dragging');
+      if (dragging && dragging !== card) {
+        const rect = card.getBoundingClientRect();
+        const midX = rect.left + rect.width / 2;
+        if (e.clientX < midX) {
+          container.insertBefore(dragging, card);
+        } else {
+          container.insertBefore(dragging, card.nextSibling);
+        }
+      }
+    });
+
+    card.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      if (!card.classList.contains('dragging')) {
+        card.classList.add('drag-over');
+      }
+    });
+
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('drag-over');
+    });
+
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      saveCardsOrder();
+    });
+  });
+}
+
+function saveCardsOrder() {
+  const container = document.getElementById('cards-grid');
+  const cardEls = container.querySelectorAll('.credit-card-ui');
+  const ids = Array.from(cardEls).map(el => el.dataset.cardId).filter(Boolean);
+  localStorage.setItem('cardmaster_cards_order', JSON.stringify(ids));
+}
+
+let cachedCardsList = [];
+
+function openMoveCardModal(cardId) {
+  const container = document.getElementById('cards-grid');
+  if (!container) return;
+  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
+  const currentIdx = cardEls.findIndex(el => String(el.dataset.cardId) === String(cardId));
+  const cardData = cachedCardsList.find(c => String(c.id) === String(cardId));
+  const cardName = cardData ? cardData.name : 'esta tarjeta';
+
+  const titleEl = document.getElementById('modal-move-card-title');
+  if (titleEl) titleEl.textContent = `⇅ Mover '${cardName}'`;
+
+  const listEl = document.getElementById('move-card-positions-list');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  cardEls.forEach((el, idx) => {
+    const cId = el.dataset.cardId;
+    const c = cachedCardsList.find(x => String(x.id) === String(cId));
+    const name = c ? c.name : `Tarjeta #${idx + 1}`;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `move-pos-btn ${idx === currentIdx ? 'active-pos' : ''}`;
+
+    let posLabel = `${idx + 1}ª posición`;
+    if (idx === 0) posLabel += ' (Inicio)';
+    else if (idx === cardEls.length - 1) posLabel += ' (Final)';
+
+    btn.innerHTML = `
+      <span><strong>${posLabel}</strong> • ${escapeHtml(name)}</span>
+      <span style="font-size:0.8rem; font-weight:700;">${idx === currentIdx ? '★ Actual' : 'Colocar aquí ➔'}</span>
+    `;
+
+    btn.onclick = () => {
+      moveCardToPosition(cardId, idx);
+      closeMoveCardModal();
+    };
+
+    listEl.appendChild(btn);
+  });
+
+  const modal = document.getElementById('modal-move-card');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function moveCardToPosition(cardId, targetIdx) {
+  const container = document.getElementById('cards-grid');
+  if (!container) return;
+  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
+  const currentIdx = cardEls.findIndex(el => String(el.dataset.cardId) === String(cardId));
+  if (currentIdx === -1 || currentIdx === targetIdx) return;
+
+  const targetEl = cardEls[targetIdx];
+  const movingEl = cardEls[currentIdx];
+
+  if (targetIdx < currentIdx) {
+    container.insertBefore(movingEl, targetEl);
+  } else {
+    container.insertBefore(movingEl, targetEl.nextSibling);
+  }
+  saveCardsOrder();
+  showToast(`Tarjeta colocada en la posición ${targetIdx + 1}`, "success");
+}
+
+function openReorderCardsModal() {
+  const container = document.getElementById('cards-grid');
+  if (!container) return;
+  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
+  if (cardEls.length <= 1) {
+    showToast("Registra al menos 2 tarjetas para poder organizarlas", "info");
+    return;
+  }
+  openMoveCardModal(cardEls[0].dataset.cardId);
+}
+
+function closeMoveCardModal() {
+  const modal = document.getElementById('modal-move-card');
+  if (modal) modal.classList.add('hidden');
+}
+
+window.openMoveCardModal = openMoveCardModal;
+window.moveCardToPosition = moveCardToPosition;
+window.openReorderCardsModal = openReorderCardsModal;
+window.closeMoveCardModal = closeMoveCardModal;
+
+function moveCardUp(cardId) {
+  const container = document.getElementById('cards-grid');
+  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
+  const idx = cardEls.findIndex(el => String(el.dataset.cardId) === String(cardId));
+  if (idx > 0) {
+    container.insertBefore(cardEls[idx], cardEls[idx - 1]);
+    saveCardsOrder();
+  }
+}
+
+function moveCardDown(cardId) {
+  const container = document.getElementById('cards-grid');
+  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
+  const idx = cardEls.findIndex(el => String(el.dataset.cardId) === String(cardId));
+  if (idx !== -1 && idx < cardEls.length - 1) {
+    container.insertBefore(cardEls[idx], cardEls[idx + 1].nextSibling);
+    saveCardsOrder();
+  }
+}
+window.moveCardUp = moveCardUp;
+window.moveCardDown = moveCardDown;
+
+async function handleSaveCard(e) {
+  e.preventDefault();
+  const id = document.getElementById('card-id').value;
+  const name = document.getElementById('card-name').value.trim();
+  const credit_limit = parseMoney(document.getElementById('card-limit').value);
+  const cutoff_day = parseInt(document.getElementById('card-cutoff-day').value);
+  const color = document.getElementById('card-color').value;
+
+  const res = await fetch('/api/cards', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, name, credit_limit, cutoff_day, color, logo_base64: currentCardLogoBase64 })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    showToast(err.error || "Error al guardar tarjeta", "error");
+    return;
+  }
+
+  document.getElementById('modal-card').classList.add('hidden');
+  await refreshAllData();
+  await syncPhysicalDbFile();
+  showToast("Tarjeta guardada en base de datos", "success");
+}
+
+function hslToHex(h, s, l) {
+  l /= 100;
+  const a = s * Math.min(l, 1 - l) / 100;
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`.toUpperCase();
+}
+
+function hexToHsl(hex) {
+  let c = hex.replace('#', '');
+  if (c.length === 3) c = c.split('').map(x => x + x).join('');
+  const num = parseInt(c, 16);
+  if (isNaN(num)) return { h: 204, s: 85, l: 45 };
+  const r = ((num >> 16) & 255) / 255;
+  const g = ((num >> 8) & 255) / 255;
+  const b = (num & 255) / 255;
+
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h = Math.round(h * 60);
+  }
+  return {
+    h: Math.round(h),
+    s: Math.round(s * 100),
+    l: Math.round(l * 100)
+  };
+}
+
+let currentColorState = { h: 204, s: 85, l: 45 };
+
+function updateColorStudioUI() {
+  const { h, s, l } = currentColorState;
+  const hex = hslToHex(h, s, l);
+
+  const colorInput = document.getElementById('card-color');
+  const hexInput = document.getElementById('card-color-hex');
+  const sampleCard = document.getElementById('card-color-sample-preview');
+  const hexBadge = document.getElementById('card-sample-hex-badge');
+  const styleBadge = document.getElementById('card-sample-style-badge');
+  const namePreview = document.getElementById('card-sample-name-preview');
+  const cardNameInput = document.getElementById('card-name');
+
+  const hueSlider = document.getElementById('card-hue-slider');
+  const satSlider = document.getElementById('card-sat-slider');
+  const lightSlider = document.getElementById('card-light-slider');
+  const hueLabel = document.getElementById('card-hue-val-label');
+  const satLabel = document.getElementById('card-sat-val-label');
+  const lightLabel = document.getElementById('card-light-val-label');
+
+  if (colorInput) colorInput.value = hex;
+  if (hexInput && document.activeElement !== hexInput) hexInput.value = hex;
+  if (sampleCard) sampleCard.style.backgroundColor = hex;
+  if (hexBadge) hexBadge.textContent = hex;
+  if (namePreview && cardNameInput) {
+    const n = cardNameInput.value.trim();
+    namePreview.textContent = n ? n : 'Tarjeta de Muestra';
+  }
+
+  if (hueLabel) hueLabel.textContent = `${h}°`;
+  if (satLabel) satLabel.textContent = `${s}%`;
+  if (lightLabel) lightLabel.textContent = `${l}%`;
+
+  if (hueSlider) hueSlider.value = h;
+  if (satSlider) {
+    satSlider.value = s;
+    satSlider.style.background = `linear-gradient(to right, ${hslToHex(h, 5, l)}, ${hslToHex(h, 100, l)})`;
+  }
+  if (lightSlider) {
+    lightSlider.value = l;
+    lightSlider.style.background = `linear-gradient(to right, ${hslToHex(h, s, 15)}, ${hslToHex(h, s, 50)}, ${hslToHex(h, s, 85)})`;
+  }
+
+  if (styleBadge) {
+    if (s < 15) styleBadge.textContent = 'Estilo Metálico / Monocromo';
+    else if (l < 30) styleBadge.textContent = 'Estilo Dark / Black Edition';
+    else if (l > 70) styleBadge.textContent = 'Estilo Pastel / Claro';
+    else styleBadge.textContent = 'Estilo Vivo Personalizado';
+  }
+}
+
+function setCardColorValue(hex) {
+  if (!hex || !hex.startsWith('#')) hex = '#0284c7';
+  currentColorState = hexToHsl(hex);
+  updateColorStudioUI();
+}
+
+async function editCard(cardId) {
+  const cards = await fetch('/api/cards').then(r => r.json());
+  const c = cards.find(x => x.id === cardId);
+  if (!c) return;
+
+  document.getElementById('modal-card-title').textContent = "Editar Tarjeta";
+  document.getElementById('card-id').value = c.id;
+  document.getElementById('card-name').value = c.name;
+  const sample = document.getElementById('card-sample-name-preview');
+  if (sample) sample.textContent = c.name || 'Tarjeta de Muestra';
+  setMoneyInput(document.getElementById('card-limit'), c.credit_limit);
+  document.getElementById('card-cutoff-day').value = c.cutoff_day;
+  setCardColorValue(c.color || '#0284c7');
+  currentCardLogoBase64 = c.logo_base64;
+  updateLogoPreview(c.logo_base64);
+
+  document.getElementById('modal-card').classList.remove('hidden');
+}
+
+function deleteCard(cardId) {
+  document.getElementById('delete-card-id').value = cardId;
+  document.getElementById('delete-card-pwd').value = '';
+  document.getElementById('delete-card-error').classList.add('hidden');
+  document.getElementById('modal-delete-card').classList.remove('hidden');
+}
+
+async function handleConfirmDeleteCard(e) {
+  e.preventDefault();
+  const cardId = document.getElementById('delete-card-id').value;
+  const password = document.getElementById('delete-card-pwd').value;
+  const errDiv = document.getElementById('delete-card-error');
+  errDiv.classList.add('hidden');
+
+  try {
+    const res = await fetch(`/api/cards/${cardId}/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    document.getElementById('modal-delete-card').classList.add('hidden');
+    await refreshAllData();
+    await syncPhysicalDbFile();
+    showToast("Tarjeta eliminada con éxito", "success");
+  } catch (err) {
+    errDiv.textContent = err.message || "Error al eliminar";
+    errDiv.classList.remove('hidden');
+  }
+}
+
+// --- APARTADOS (LÓGICA SOLICITADA) ---
+let currentPayingAside = null;
+
+async function renderSetAsides() {
+  const [cards, setAsides] = await Promise.all([
+    fetch('/api/cards').then(r => r.json()),
+    fetch('/api/set-asides').then(r => r.json())
+  ]);
+
+  const summaryGrid = document.getElementById('setaside-summary-cards');
+  summaryGrid.innerHTML = '';
+
+  // Calcular consolidado global
+  let globalEfectivo = 0;
+  let globalDebito = 0;
+  let globalPagado = 0;
+
+  cards.forEach(card => {
+    const cardSetAsides = setAsides.filter(s => String(s.card_id) === String(card.id));
+    const cardPaid = cardSetAsides.reduce((sum, s) => sum + (Number(s.paid_amount) || (s.is_paid ? s.amount : 0)), 0);
+    
+    // Solo contar como "en mano" lo no pagado
+    const totalCash = cardSetAsides.filter(s => (s.fund_type !== 'Débito' && s.fund_type !== 'Debito')).reduce((sum, s) => {
+      const paid = s.paid_amount || (s.is_paid ? s.amount : 0);
+      return sum + Math.max(0, s.amount - paid);
+    }, 0);
+    const totalDebit = cardSetAsides.filter(s => (s.fund_type === 'Débito' || s.fund_type === 'Debito')).reduce((sum, s) => {
+      const paid = s.paid_amount || (s.is_paid ? s.amount : 0);
+      return sum + Math.max(0, s.amount - paid);
+    }, 0);
+    const cardInHand = totalCash + totalDebit;
+
+    globalEfectivo += totalCash;
+    globalDebito += totalDebit;
+    globalPagado += cardPaid;
+
+    const box = document.createElement('div');
+    box.className = 'setaside-card';
+    box.innerHTML = `
+      <div class="setaside-header">
+        <strong>${escapeHtml(card.name)}</strong>
+        <span class="countdown-badge success">En Mano: $${cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+      </div>
+      <div style="margin: 12px 0;">
+        <div class="setaside-breakdown-row">
+          <span>💵 En Mano Efectivo:</span>
+          <strong style="color: #34d399;">$${totalCash.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
+        </div>
+        <div class="setaside-breakdown-row">
+          <span>💳 En Mano Débito:</span>
+          <strong style="color: #60a5fa;">$${totalDebit.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
+        </div>
+        ${cardPaid > 0 ? `
+        <div class="setaside-breakdown-row">
+          <span>🏦 Ya Pagado al Banco:</span>
+          <strong style="color: #38bdf8;">$${cardPaid.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
+        </div>` : ''}
+      </div>
+      <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+        <span class="small text-muted">Total En Mano:</span>
+        <span class="setaside-amount-highlight" style="font-size:1.25rem;">$${cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+      </div>
+      <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+        <button class="btn btn-sm btn-secondary" onclick="openTransferModal('${card.id}')">🔄 Mover Efectivo ⇄ Débito</button>
+      </div>
+    `;
+    summaryGrid.appendChild(box);
+  });
+
+  // Consolidado Global
+  if (cards.length > 0) {
+    const globalInHand = globalEfectivo + globalDebito;
+    const globalBox = document.createElement('div');
+    globalBox.className = 'setaside-card';
+    globalBox.style.borderColor = 'var(--primary-color)';
+    globalBox.innerHTML = `
+      <div class="setaside-header">
+        <strong style="color: var(--primary-color);">🌟 CONSOLIDADO GLOBAL</strong>
+        <span class="countdown-badge normal">Todas las cuentas</span>
+      </div>
+      <div style="margin: 12px 0;">
+        <div class="setaside-breakdown-row">
+          <span>💵 Total en Efectivo:</span>
+          <strong style="color: #34d399; font-size:1rem;">$${globalEfectivo.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
+        </div>
+        <div class="setaside-breakdown-row">
+          <span>💳 Total en Débito:</span>
+          <strong style="color: #60a5fa; font-size:1rem;">$${globalDebito.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
+        </div>
+        ${globalPagado > 0 ? `
+        <div class="setaside-breakdown-row">
+          <span>🏦 Total Pagado al Banco:</span>
+          <strong style="color: #38bdf8; font-size:1rem;">$${globalPagado.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>
+        </div>` : ''}
+      </div>
+      <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+        <span class="small text-muted">Total Dinero en Mano:</span>
+        <span class="setaside-amount-highlight">$${globalInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+      </div>
+    `;
+    summaryGrid.prepend(globalBox);
+  }
+
+  const tbody = document.getElementById('setaside-tbody');
+  tbody.innerHTML = '';
+
+  const activeSetAsides = setAsides.filter(s => {
+    const paidAmt = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
+    const isFullyPaid = s.status === 'pagado' || (paidAmt >= s.amount && s.amount > 0);
+    return !isFullyPaid && s.amount > 0;
+  });
+
+  const countBadge = document.getElementById('setasides-count-badge');
+  if (countBadge) {
+    countBadge.textContent = `${activeSetAsides.length} apartado${activeSetAsides.length === 1 ? '' : 's'} activo${activeSetAsides.length === 1 ? '' : 's'}`;
+  }
+
+  if (!activeSetAsides.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Aún no tienes apartados registrados</td></tr>`;
+    return;
+  }
+
+  activeSetAsides.forEach(s => {
+    const isDebit = s.fund_type === 'Débito' || s.fund_type === 'Debito';
+    const paidAmt = Number(s.paid_amount) || (s.is_paid ? s.amount : 0);
+    const isFullyPaid = s.status === 'pagado' || (paidAmt >= s.amount && s.amount > 0);
+    const isPartialPaid = s.status === 'pago_parcial' || (paidAmt > 0 && paidAmt < s.amount);
+    
+    let statusBadge = '';
+    if (isFullyPaid) {
+      statusBadge = `<span class="status-badge pagado">✅ Pagado</span>`;
+    } else if (isPartialPaid) {
+      statusBadge = `<span class="status-badge pago-parcial">💳 Pago Parcial: $${paidAmt.toLocaleString()}</span>`;
+    } else {
+      statusBadge = `<span class="status-badge apartado">💰 Apartado</span>`;
+    }
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${s.date}</td>
+      <td><strong>${escapeHtml(s.card_name)}</strong></td>
+      <td><span class="countdown-badge normal">${escapeHtml(s.person_name)}</span></td>
+      <td>
+        <button class="badge-fund ${isDebit ? 'debito' : 'efectivo'}" style="cursor:pointer; border:none;" onclick="toggleFundLocation('${s.id}')" title="Clic para cambiar entre Efectivo y Débito">
+          ${isDebit ? '💳 Débito ⇄' : '💵 Efectivo ⇄'}
+        </button>
+      </td>
+      <td style="font-weight:700; color:${s.amount < 0 ? 'var(--danger-color)' : 'var(--success-color)'};">
+        $${s.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+      </td>
+      <td>${statusBadge}</td>
+      <td>${escapeHtml(s.note || 'Apartado ordinario')}</td>
+      <td>
+        <div style="display:flex; gap:6px; align-items:center;">
+          ${s.amount > 0 && !isFullyPaid ? `
+            <button class="btn btn-sm btn-primary" onclick="openPayBankModal('${s.id}')" title="Pagar o abonar al banco">💳 Pagar</button>
+          ` : ''}
+          ${(isFullyPaid || isPartialPaid) ? `
+            <button class="btn btn-sm btn-secondary" onclick="unpaySetAside('${s.id}')" title="Deshacer abono al banco">↩️</button>
+          ` : ''}
+          <button class="btn btn-sm btn-secondary" onclick="openSetAsideModal(null, null, null, '', '${s.id}')" title="Editar este apartado">✏️</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteSetAside('${s.id}')" title="Eliminar este apartado">🗑️</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function openPayBankModal(asideId) {
+  const asides = await fetch('/api/set-asides').then(r => r.json());
+  const s = asides.find(x => String(x.id) === String(asideId));
+  if (!s) return;
+
+  currentPayingAside = s;
+  const remaining = Number(s.amount) || 0;
+
+  document.getElementById('pay-bank-aside-id').value = s.id;
+  document.getElementById('pay-bank-card-name').value = s.card_name || 'Tarjeta';
+  document.getElementById('pay-bank-person-name').value = s.person_name || 'Personal';
+  document.getElementById('pay-bank-available-display').textContent = `$${remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}`;
+  document.getElementById('pay-full-label-amt').textContent = `$${remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}`;
+
+  document.getElementById('pay-mode-full').checked = true;
+  document.getElementById('pay-partial-amount-group').classList.add('hidden');
+  setMoneyInput(document.getElementById('pay-bank-amount'), remaining);
+
+  document.getElementById('modal-pay-bank').classList.remove('hidden');
+}
+
+async function handlePayBankSubmit(e) {
+  e.preventDefault();
+  if (!currentPayingAside) return;
+
+  const asideId = document.getElementById('pay-bank-aside-id').value;
+  const isPartial = document.getElementById('pay-mode-partial').checked;
+  const remaining = Number(currentPayingAside.amount) || 0;
+
+  let amountToPay = remaining;
+  if (isPartial) {
+    amountToPay = parseMoney(document.getElementById('pay-bank-amount').value);
+    if (isNaN(amountToPay) || amountToPay <= 0) {
+      showToast("Ingresa un monto válido a pagar", "error");
+      return;
+    }
+    if (amountToPay > remaining) {
+      amountToPay = remaining;
+    }
+  }
+
+  try {
+    const res = await fetch(`/api/set-asides/${asideId}/pay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paid_amount: amountToPay })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || "Error procesando pago al banco");
+    }
+
+    const payResult = await res.json();
+    document.getElementById('modal-pay-bank').classList.add('hidden');
+    await refreshAllData();
+    await syncPhysicalDbFile();
+
+    if (payResult.fully_settled) {
+      showToast(`✅ ¡Liquidado al 100%! Gasto saldado y crédito liberado en tu tarjeta`, "success");
+    } else {
+      showToast(`✅ Abono de $${amountToPay.toLocaleString('es-MX', {minimumFractionDigits:2})} aplicado al banco con éxito`, "success");
+    }
+  } catch (err) {
+    showToast(err.message || "Error al pagar", "error");
+  }
+}
+
+async function unpaySetAside(asideId) {
+  if (!confirm("¿Deseas revertir este pago al banco y volver a dejar el dinero en mano?")) return;
+  try {
+    const res = await fetch(`/api/set-asides/${asideId}/unpay`, { method: 'POST' });
+    if (!res.ok) throw new Error("Error al revertir pago");
+    await refreshAllData();
+    await syncPhysicalDbFile();
+    showToast("Pago revertido a dinero en mano", "success");
+  } catch (err) {
+    showToast(err.message || "Error al revertir", "error");
+  }
+}
+
+async function deleteSetAside(asideId) {
+  if (!confirm("¿Seguro que deseas eliminar este dinero apartado?")) return;
+  try {
+    const res = await fetch(`/api/set-asides/${asideId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error("Error al eliminar apartado");
+    await refreshAllData();
+    await syncPhysicalDbFile();
+    showToast("Dinero apartado eliminado exitosamente", "success");
+  } catch (err) {
+    showToast(err.message || "Error al eliminar apartado", "error");
+  }
+}
+
+async function payMovementFromAside(movId) {
+  const asides = await fetch('/api/set-asides').then(r => r.json());
+  const related = asides.find(s => String(s.movement_id) === String(movId));
+  if (related) {
+    openPayBankModal(related.id);
+  } else {
+    const movs = await fetch('/api/movements').then(r => r.json());
+    const m = movs.find(x => String(x.id) === String(movId));
+    if (m) {
+      try {
+        const res = await fetch('/api/set-asides', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            card_id: m.card_id,
+            person_id: m.person_id,
+            movement_id: m.id,
+            amount: m.amount,
+            fund_type: 'Débito',
+            note: `Liquidación de: ${m.concept}`,
+            date: new Date().toISOString().split('T')[0]
+          })
+        });
+        const created = await res.json();
+        if (created && created.id) {
+          await openPayBankModal(created.id);
+        } else {
+          openSetAsideModal(m.id, m.card_id, m.person_id, m.amount);
+        }
+      } catch (e) {
+        openSetAsideModal(m.id, m.card_id, m.person_id, m.amount);
+      }
+    }
+  }
+}
+
+async function openSetAsideModal(movId = null, cardId = null, personId = null, defaultAmount = '', asideId = null) {
+  document.getElementById('form-setaside').reset();
+  document.getElementById('setaside-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('setaside-movement-id').value = movId || '';
+  document.getElementById('setaside-id').value = asideId || '';
+
+  const titleEl = document.getElementById('modal-setaside-title');
+  const submitBtn = document.getElementById('btn-save-setaside-submit');
+
+  if (asideId) {
+    if (titleEl) titleEl.textContent = "✏️ Editar Dinero Apartado";
+    if (submitBtn) submitBtn.textContent = "Guardar Cambios";
+
+    try {
+      const asides = await fetch('/api/set-asides').then(r => r.json());
+      const s = asides.find(x => String(x.id) === String(asideId));
+      if (s) {
+        if (s.card_id) document.getElementById('setaside-card').value = String(s.card_id);
+        if (s.person_id) document.getElementById('setaside-person').value = String(s.person_id);
+        document.getElementById('setaside-fund-type').value = (s.fund_type === 'Débito' || s.fund_type === 'Debito') ? 'Débito' : 'Efectivo';
+        document.getElementById('setaside-date').value = s.date || new Date().toISOString().split('T')[0];
+        document.getElementById('setaside-note').value = s.note || '';
+        document.getElementById('setaside-movement-id').value = s.movement_id || '';
+        setMoneyInput(document.getElementById('setaside-amount'), s.amount);
+      }
+    } catch (err) {
+      console.error("Error cargando apartado para edición:", err);
+    }
+  } else {
+    if (titleEl) titleEl.textContent = "💰 Registrar Dinero Apartado";
+    if (submitBtn) submitBtn.textContent = "Confirmar Apartado";
+
+    // Si viene de un movimiento, asegurar tarjeta y persona
+    if (movId && (!cardId || !personId)) {
+      try {
+        const movs = await fetch('/api/movements').then(r => r.json());
+        const m = movs.find(x => String(x.id) === String(movId));
+        if (m) {
+          if (!cardId) cardId = m.card_id;
+          if (!personId) personId = m.person_id;
+          if (!defaultAmount) defaultAmount = m.amount;
+        }
+      } catch (e) {}
+    }
+
+    // Si viene con personId pero sin cardId (ej: abierto desde deudores):
+    // buscar automáticamente la tarjeta en la que esta persona tenga adeudo pendiente
+    if (personId && !cardId) {
+      try {
+        const [movs, setAsides] = await Promise.all([
+          fetch('/api/movements').then(r => r.json()),
+          fetch('/api/set-asides').then(r => r.json())
+        ]);
+        const pMovs = movs.filter(m => String(m.person_id) === String(personId));
+        const pAsides = setAsides.filter(s => String(s.person_id) === String(personId));
+        const debtMap = {};
+        pMovs.forEach(m => {
+          debtMap[m.card_id] = (debtMap[m.card_id] || 0) + m.amount;
+        });
+        pAsides.forEach(s => {
+          if (s.card_id && debtMap[s.card_id]) {
+            debtMap[s.card_id] = Math.max(0, debtMap[s.card_id] - s.amount);
+          }
+        });
+        const firstDebtCard = Object.keys(debtMap).find(cId => debtMap[cId] > 0);
+        if (firstDebtCard) {
+          cardId = firstDebtCard;
+        }
+      } catch (e) {}
+    }
+
+    if (cardId) document.getElementById('setaside-card').value = String(cardId);
+    if (personId) document.getElementById('setaside-person').value = String(personId);
+    if (defaultAmount) setMoneyInput(document.getElementById('setaside-amount'), defaultAmount);
+  }
+
+  document.getElementById('modal-setaside').classList.remove('hidden');
+}
+
+async function handleSaveSetAside(e) {
+  e.preventDefault();
+  const asideId = document.getElementById('setaside-id').value;
+  const payload = {
+    card_id: document.getElementById('setaside-card').value,
+    person_id: document.getElementById('setaside-person').value,
+    movement_id: document.getElementById('setaside-movement-id').value || null,
+    amount: parseMoney(document.getElementById('setaside-amount').value),
+    fund_type: document.getElementById('setaside-fund-type').value,
+    note: document.getElementById('setaside-note').value.trim(),
+    date: document.getElementById('setaside-date').value
+  };
+
+  try {
+    if (asideId) {
+      const res = await fetch(`/api/set-asides/${asideId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Error al actualizar apartado");
+      showToast("Apartado actualizado con éxito", "success");
+    } else {
+      const res = await fetch('/api/set-asides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Error al registrar apartado");
+      showToast("Dinero apartado registrado con éxito", "success");
+    }
+
+    document.getElementById('modal-setaside').classList.add('hidden');
+    await refreshAllData();
+    await syncPhysicalDbFile();
+  } catch (err) {
+    showToast(err.message || "Error al guardar apartado", "error");
+  }
+}
+
+// --- MOVIMIENTOS ---
+async function renderMovements() {
+  const movs = await fetch('/api/movements').then(r => r.json());
+  const cardFilter = document.getElementById('filter-card').value;
+  const personFilter = document.getElementById('filter-person').value;
+  const tbody = document.getElementById('movements-tbody');
+  tbody.innerHTML = '';
+
+  const filtered = movs.filter(m => {
+    if (cardFilter !== 'all' && String(m.card_id) !== String(cardFilter)) return false;
+    if (personFilter !== 'all' && String(m.person_id) !== String(personFilter)) return false;
+    if (m.status === 'pagado') return false; // Liquidado 100% no estorba visualmente
+    return true;
+  });
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Sin gastos registrados</td></tr>`;
+    return;
+  }
+
+  filtered.forEach(m => {
+    let statusBadge = '';
+    let actionBtn = '';
+
+    if (m.status === 'pagado') {
+      statusBadge = `<span class="status-badge pagado">✅ Pagado</span>`;
+      actionBtn = `<span class="countdown-badge success" style="font-size:0.75rem;">✓ Liquidado</span>`;
+    } else if (m.status === 'pago_parcial') {
+      statusBadge = `<span class="status-badge pago-parcial">💳 Pago Parcial ($${(m.total_paid || 0).toLocaleString()})</span>`;
+      actionBtn = `<button class="btn btn-sm btn-primary" onclick="payMovementFromAside('${m.id}')" title="Abonar resto al banco">💳 Pagar Resto</button>`;
+    } else if (m.status === 'apartado') {
+      statusBadge = `<span class="status-badge apartado">💰 Apartado</span>`;
+      actionBtn = `<button class="btn btn-sm btn-primary" onclick="payMovementFromAside('${m.id}')" title="Liquidar dinero al banco">💳 Pagar Banco</button>`;
+    } else if (m.status === 'apartado_parcial') {
+      const rest = Math.max(0, m.amount - (m.total_set_aside || 0));
+      statusBadge = `<span class="status-badge apartado-parcial">⏳ Apartado Parcial ($${(m.total_set_aside || 0).toLocaleString()} de $${m.amount.toLocaleString()})</span>`;
+      actionBtn = `<button class="btn btn-sm btn-secondary" onclick="openSetAsideModal('${m.id}', '${m.card_id}', '${m.person_id}', '${rest}')" title="Apartar faltante ($${rest})">💰 + Apartar Resto</button>`;
+    } else {
+      statusBadge = `<span class="status-badge gastado">🛒 Gastado</span>`;
+      actionBtn = `<button class="btn btn-sm btn-secondary" onclick="openSetAsideModal('${m.id}', '${m.card_id}', '${m.person_id}', '${m.amount}')">💰 Apartar</button>`;
+    }
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${m.date}</td>
+      <td><strong>${escapeHtml(m.concept)}</strong></td>
+      <td>${escapeHtml(m.card_name)}</td>
+      <td><span class="countdown-badge normal">${escapeHtml(m.person_name)}</span></td>
+      <td style="font-weight: 700;">$${m.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
+      <td>
+        <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+          ${statusBadge}
+          ${actionBtn}
+        </div>
+      </td>
+      <td>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-sm btn-secondary" onclick="openEditMovement('${m.id}')" title="Editar Gasto">✏️</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteMovement('${m.id}')" title="Eliminar Gasto">🗑️</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function openEditMovement(id) {
+  const movs = await fetch('/api/movements').then(r => r.json());
+  const m = movs.find(x => x.id === id);
+  if (!m) return;
+
+  document.getElementById('modal-movement-title').textContent = "Editar Gasto";
+  const submitBtn = document.getElementById('btn-save-movement-submit');
+  if (submitBtn) submitBtn.textContent = "Guardar Cambios";
+
+  document.getElementById('mov-id').value = m.id;
+  document.getElementById('mov-concept').value = m.concept;
+  setMoneyInput(document.getElementById('mov-amount'), m.amount);
+  document.getElementById('mov-date').value = m.date;
+  document.getElementById('mov-card').value = m.card_id;
+  document.getElementById('mov-person').value = m.person_id;
+
+  const msiContainer = document.getElementById('mov-msi-container');
+  if (msiContainer) msiContainer.classList.add('hidden');
+  document.getElementById('msi-extra-fields').classList.add('hidden');
+  document.getElementById('mov-is-msi').checked = false;
+
+  document.getElementById('modal-movement').classList.remove('hidden');
+}
+
+async function handleSaveMovement(e) {
+  e.preventDefault();
+  const movId = document.getElementById('mov-id').value;
+  const payload = {
+    concept: document.getElementById('mov-concept').value.trim(),
+    amount: parseMoney(document.getElementById('mov-amount').value),
+    date: document.getElementById('mov-date').value,
+    card_id: document.getElementById('mov-card').value,
+    person_id: document.getElementById('mov-person').value,
+    is_msi: document.getElementById('mov-is-msi').checked,
+    msi_months: parseInt(document.getElementById('mov-msi-months').value)
+  };
+
+  if (movId) {
+    await fetch(`/api/movements/${movId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    showToast("Gasto actualizado con éxito", "success");
+  } else {
+    await fetch('/api/movements', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    showToast("Gasto guardado en base de datos", "success");
+  }
+
+  document.getElementById('modal-movement').classList.add('hidden');
+  await refreshAllData();
+  await syncPhysicalDbFile();
+}
+
+async function deleteMovement(id) {
+  if (!confirm("¿Eliminar este gasto?")) return;
+  await fetch(`/api/movements/${id}`, { method: 'DELETE' });
+  await refreshAllData();
+  await syncPhysicalDbFile();
+  showToast("Movimiento eliminado", "info");
+}
+
+// --- DEUDORES (RECONCILIACIÓN DE APARTADOS) ---
+async function renderDebts() {
+  const [people, cards, movs, setAsides] = await Promise.all([
+    fetch('/api/people').then(r => r.json()),
+    fetch('/api/cards').then(r => r.json()),
+    fetch('/api/movements').then(r => r.json()),
+    fetch('/api/set-asides').then(r => r.json())
+  ]);
+
+  const container = document.getElementById('debts-summary-container');
+  container.innerHTML = '';
+
+  people.forEach(p => {
+    const pIdStr = String(p.id);
+    const personMovs = movs.filter(m => String(m.person_id) === pIdStr);
+    const personSetAsides = setAsides.filter(s => {
+      if (s.movement_id) {
+        const m = movs.find(x => String(x.id) === String(s.movement_id));
+        return (m && String(m.person_id) === pIdStr) || String(s.person_id) === pIdStr;
+      }
+      return String(s.person_id) === pIdStr;
+    });
+
+    const totalSpent = personMovs.reduce((sum, m) => sum + m.amount, 0);
+    const totalApartado = personSetAsides.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+    const pendingToCollect = Math.max(0, totalSpent - totalApartado);
+
+    const cardBreakdown = [];
+    cards.forEach(c => {
+      const cIdStr = String(c.id);
+      const cMovs = personMovs.filter(m => String(m.card_id) === cIdStr).reduce((sum, m) => sum + m.amount, 0);
+      const cSetAside = personSetAsides.filter(s => {
+        if (s.movement_id) {
+          const m = movs.find(x => String(x.id) === String(s.movement_id));
+          return (m && String(m.card_id) === cIdStr) || String(s.card_id) === cIdStr;
+        }
+        return String(s.card_id) === cIdStr;
+      }).reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+      const cPending = Math.max(0, cMovs - cSetAside);
+      if (cMovs > 0) {
+        cardBreakdown.push({ id: c.id, name: c.name, spent: cMovs, apartado: cSetAside, pending: cPending });
+      }
+    });
+
+    const firstDebtCard = cardBreakdown.find(b => b.pending > 0.001);
+    const defaultCardId = firstDebtCard ? firstDebtCard.id : (cards[0] ? cards[0].id : '');
+
+    // Reconciliación FIFO de apartados para los gastos de esta persona
+    const sortedPersonMovs = [...personMovs].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const directAsideMap = {};
+    const unallocatedByCard = {};
+    let unallocatedGlobal = 0;
+
+    personSetAsides.forEach(s => {
+      const amt = parseFloat(s.amount) || 0;
+      if (s.movement_id) {
+        directAsideMap[String(s.movement_id)] = (directAsideMap[String(s.movement_id)] || 0) + amt;
+      } else if (s.card_id) {
+        unallocatedByCard[String(s.card_id)] = (unallocatedByCard[String(s.card_id)] || 0) + amt;
+      } else {
+        unallocatedGlobal += amt;
+      }
+    });
+
+    const reconciledMovs = sortedPersonMovs.map(m => {
+      let direct = directAsideMap[String(m.id)] || 0;
+      let covered = direct;
+      let rem = Math.max(0, m.amount - covered);
+
+      if (rem > 0.001 && m.card_id && unallocatedByCard[String(m.card_id)] > 0.001) {
+        const pool = unallocatedByCard[String(m.card_id)];
+        const alloc = Math.min(rem, pool);
+        covered += alloc;
+        unallocatedByCard[String(m.card_id)] -= alloc;
+        rem = Math.max(0, m.amount - covered);
+      }
+
+      if (rem > 0.001 && unallocatedGlobal > 0.001) {
+        const alloc = Math.min(rem, unallocatedGlobal);
+        covered += alloc;
+        unallocatedGlobal -= alloc;
+        rem = Math.max(0, m.amount - covered);
+      }
+
+      return {
+        ...m,
+        total_aside: covered,
+        remaining: rem
+      };
+    });
+
+    // Movimientos pendientes por apartar (se excluyen los que ya estén 100% cubiertos)
+    const pendingMovements = reconciledMovs.filter(m => m.remaining > 0.001 && m.status !== 'apartado' && m.status !== 'pagado')
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    const box = document.createElement('div');
+    box.className = 'debt-card';
+    box.innerHTML = `
+      <div class="debt-header">
+        <div>
+          <h3>${escapeHtml(p.name)}</h3>
+          <span class="small text-muted">${p.name === 'Personal' ? 'Tus gastos propios' : 'A cobrar'}</span>
+        </div>
+        <div style="text-align: right;">
+          <div class="debt-total-amount">$${pendingToCollect.toLocaleString('es-MX', {minimumFractionDigits: 2})}</div>
+          <span class="small text-muted">Falta cobrar</span>
+        </div>
+      </div>
+      <div class="small" style="margin-bottom: 8px;">
+        <span>Total consumido: $${totalSpent.toLocaleString('es-MX')}</span> | 
+        <span style="color:var(--success-color);">Ya entregado: $${totalApartado.toLocaleString('es-MX')}</span>
+      </div>
+      <strong>Desglose por Tarjetas:</strong>
+      <ul class="debt-breakdown-list">
+        ${cardBreakdown.length > 0 ? cardBreakdown.map(b => `
+          <li>
+            <div class="debt-breakdown-info">
+              <strong>${escapeHtml(b.name)}</strong>
+              <span class="small text-muted">Gastado: $${b.spent.toLocaleString()} | Apartado: $${b.apartado.toLocaleString()}</span>
+              <span class="debt-breakdown-pending">Pendiente: <strong>$${b.pending.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
+            </div>
+            ${b.pending > 0.001 ? `
+              <button class="btn btn-sm btn-secondary" onclick="openSetAsideModal(null, '${b.id}', '${p.id}', '${b.pending}')" title="Apartar para ${escapeHtml(b.name)}">
+                💰 Apartar ($${b.pending.toLocaleString()})
+              </button>
+            ` : '<span class="status-badge pagado" style="font-size: 0.72rem;">Al día</span>'}
+          </li>
+        `).join('') : '<li class="text-muted">Sin adeudos pendientes</li>'}
+      </ul>
+      ${pendingMovements.length > 0 ? `
+        <div style="margin-top: 14px; border-top: 1px dashed var(--border-color); padding-top: 10px;">
+          <strong style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Gastos pendientes por apartar (${pendingMovements.length}):</span>
+          </strong>
+          <ul class="debt-breakdown-list" style="margin-top: 6px;">
+            ${pendingMovements.map(m => {
+              const cardObj = cards.find(c => String(c.id) === String(m.card_id));
+              const cardName = cardObj ? cardObj.name : 'Tarjeta';
+              return `
+                <li>
+                  <div class="debt-breakdown-info">
+                    <strong>${escapeHtml(m.concept)}</strong>
+                    <span class="small text-muted">${m.date} | 💳 ${escapeHtml(cardName)} | Total: $${m.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}${m.total_aside > 0.001 ? ` | Apartado: $${m.total_aside.toLocaleString('es-MX', {minimumFractionDigits: 2})}` : ''}</span>
+                    <span class="debt-breakdown-pending">Falta por apartar: <strong>$${m.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
+                  </div>
+                  <button class="btn btn-sm btn-primary" onclick="openSetAsideModal('${m.id}', '${m.card_id}', '${p.id}', '${m.remaining}')" title="Apartar parcial o completo este gasto">
+                    💰 Apartar ($${m.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})})
+                  </button>
+                </li>
+              `;
+            }).join('')}
+          </ul>
+        </div>
+      ` : ''}
+      <div style="display:flex; justify-content: flex-end; gap:8px; margin-top: 12px;">
+        <button class="btn btn-sm btn-secondary" onclick="openSetAsideModal(null, '${defaultCardId}', '${p.id}', '${pendingToCollect}')">💰 + Recibir / Apartar</button>
+        ${p.name !== 'Personal' ? `<button class="btn btn-sm btn-outline-danger" onclick="deletePerson('${p.id}')">Eliminar</button>` : ''}
+      </div>
+    `;
+    container.appendChild(box);
+  });
+}
+
+async function deletePerson(pId) {
+  if (!confirm("¿Eliminar persona?")) return;
+  const res = await fetch(`/api/people/${pId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) alert(data.error);
+  await refreshAllData();
+  await syncPhysicalDbFile();
+}
+
+// --- CALENDARIO Y AGENDA ---
+async function renderCalendar() {
+  const [cards, movs, setAsides] = await Promise.all([
+    fetch('/api/cards').then(r => r.json()),
+    fetch('/api/movements').then(r => r.json()),
+    fetch('/api/set-asides').then(r => r.json())
+  ]);
+
+  const summaryBox = document.getElementById('calendar-cards-summary');
+  summaryBox.innerHTML = '';
+
+  // Calcular Ventana Óptima de Pago Unificado (Convergencia)
+  let convergenceStart = null;
+  let convergenceEnd = null;
+  let hasValidConvergence = false;
+
+  if (cards.length > 0) {
+    const startDays = cards.map(c => c.cutoff_day + 1);
+    const endDays = cards.map(c => c.cutoff_day + 15);
+
+    convergenceStart = Math.max(...startDays);
+    convergenceEnd = Math.min(...endDays);
+    hasValidConvergence = convergenceStart <= convergenceEnd;
+  }
+
+  // Renderizar Banner de Pago Unificado
+  const existingConvergenceBox = document.getElementById('convergence-box');
+  if (existingConvergenceBox) existingConvergenceBox.remove();
+
+  if (cards.length >= 2) {
+    const convBox = document.createElement('div');
+    convBox.id = 'convergence-box';
+    if (hasValidConvergence) {
+      convBox.className = 'convergence-card';
+      convBox.innerHTML = `
+        <div>
+          <h3 style="display:flex; align-items:center; gap:8px;">🎯 Ventana Óptima de Pago Unificado</h3>
+          <p class="small text-muted" style="margin-top:4px;">
+            En este rango de días todas tus tarjetas ya pasaron corte y siguen en periodo vigente de pago.
+          </p>
+          <div class="convergence-badge">
+            Días ${convergenceStart} al ${convergenceEnd} de cada mes
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <span class="small text-muted">Día ideal para liquidar todas juntas:</span>
+          <div style="font-size: 1.3rem; font-weight:800; color:#3b82f6; margin-top:4px;">
+            Día ${convergenceStart}
+          </div>
+        </div>
+      `;
+    } else {
+      convBox.className = 'convergence-card no-overlap';
+      convBox.innerHTML = `
+        <div>
+          <h3 style="color:#f59e0b;">⚠️ Sin convergencia unificada directa para todas las tarjetas</h3>
+          <p class="small text-muted" style="margin-top:4px;">
+            Las fechas de corte de tus tarjetas están muy dispersas entre sí. La última tarjeta en cortar inicia pago el día <strong>${convergenceStart}</strong>, mientras que la primera vence el día <strong>${convergenceEnd}</strong>.
+          </p>
+        </div>
+      `;
+    }
+    summaryBox.parentNode.insertBefore(convBox, summaryBox);
+  }
+
+  const today = new Date();
+  const currentDay = today.getDate();
+  const isViewingCurrentMonth = (currentCalMonth === today.getMonth() && currentCalYear === today.getFullYear());
+  const isPastMonth = (currentCalYear < today.getFullYear() || (currentCalYear === today.getFullYear() && currentCalMonth < today.getMonth()));
+
+  // Cargar MSI para cálculo de deuda exacta de cada tarjeta
+  const msiMap = {};
+  const msiResults = await Promise.all(cards.map(c => fetch(`/api/msi/${c.id}`).then(r => r.json()).catch(() => [])));
+  cards.forEach((c, idx) => {
+    msiMap[String(c.id)] = msiResults[idx] || [];
+  });
+
+  const cardDataMap = {};
+  cards.forEach(card => {
+    const cardIdStr = String(card.id);
+    const cardMovs = movs.filter(m => String(m.card_id) === cardIdStr);
+    const regularSpent = cardMovs.reduce((sum, m) => sum + m.amount, 0);
+
+    const cardMsi = msiMap[cardIdStr] || [];
+    const msiPending = cardMsi.reduce((sum, p) => sum + (p.total_amount - (p.total_amount / p.months * p.paid_months)), 0);
+
+    const cardSetAsides = setAsides.filter(s => {
+      if (String(s.card_id) === cardIdStr) return true;
+      if (s.movement_id) {
+        const m = movs.find(x => String(x.id) === String(s.movement_id));
+        if (m && String(m.card_id) === cardIdStr) return true;
+      }
+      return false;
+    });
+
+    const cardPaidToBank = cardSetAsides.reduce((sum, s) => sum + (Number(s.paid_amount) || (s.is_paid ? s.amount : 0)), 0);
+    const cardInHand = cardSetAsides.reduce((sum, s) => sum + Math.max(0, s.amount - (Number(s.paid_amount) || (s.is_paid ? s.amount : 0))), 0);
+
+    const totalDebt = Math.max(0, (regularSpent - cardPaidToBank) + msiPending);
+    const isPaid = (totalDebt <= 0.001);
+    const isFullyCoveredByAside = !isPaid && (cardInHand >= totalDebt);
+    const missingToSetAside = Math.max(0, totalDebt - cardInHand);
+
+    let hasCutThisMonth = false;
+    let isCuttingToday = false;
+    let daysToCutoff = 0;
+
+    if (isPastMonth) {
+      hasCutThisMonth = true;
+    } else if (isViewingCurrentMonth) {
+      if (currentDay > card.cutoff_day) {
+        hasCutThisMonth = true;
+      } else if (currentDay === card.cutoff_day) {
+        isCuttingToday = true;
+      } else {
+        daysToCutoff = card.cutoff_day - currentDay;
+      }
+    } else {
+      const lastDayThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      daysToCutoff = (lastDayThisMonth - currentDay) + card.cutoff_day;
+    }
+
+    cardDataMap[cardIdStr] = {
+      card,
+      totalDebt,
+      cardPaidToBank,
+      cardInHand,
+      isPaid,
+      isFullyCoveredByAside,
+      missingToSetAside,
+      hasCutThisMonth,
+      isCuttingToday,
+      daysToCutoff
+    };
+  });
+
+  cards.forEach(card => {
+    const data = cardDataMap[String(card.id)];
+    const { totalDebt, cardInHand, isPaid, isFullyCoveredByAside, missingToSetAside, hasCutThisMonth, isCuttingToday, daysToCutoff } = data;
+
+    let cutBadgeHtml = '';
+    if (hasCutThisMonth) {
+      cutBadgeHtml = `<span class="cal-badge cut-done" title="Corte cerrado este mes">✂️ Ya Cortó (Día ${card.cutoff_day})</span>`;
+    } else if (isCuttingToday) {
+      cutBadgeHtml = `<span class="cal-badge cut-today" title="Corte hoy">⚡ ¡Corta HOY!</span>`;
+    } else {
+      cutBadgeHtml = `<span class="cal-badge cut-pending" title="Corte pendiente">⏳ Corta en ${daysToCutoff} días</span>`;
+    }
+
+    let payBadgeHtml = '';
+    if (isPaid) {
+      payBadgeHtml = `<span class="cal-badge paid-done" title="Sin deuda pendiente al banco">✅ Pagada ($0 deuda)</span>`;
+    } else if (isFullyCoveredByAside) {
+      payBadgeHtml = `<span class="cal-badge paid-covered" title="Dinero 100% apartado en mano">💰 100% Apartado</span>`;
+    } else {
+      payBadgeHtml = `<span class="cal-badge paid-pending" title="Falta por liquidar">🔴 Falta pagar: $${totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>`;
+    }
+
+    let statusRowHtml = '';
+    if (isPaid) {
+      statusRowHtml = `<div class="cal-card-status-row paid"><span>🎉 ¡Tarjeta liquidada al 100%!</span> <strong>$0.00 deuda</strong></div>`;
+    } else if (isFullyCoveredByAside) {
+      statusRowHtml = `<div class="cal-card-status-row covered"><span>💰 Apartado listo para pagar:</span> <strong>$${cardInHand.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></div>`;
+    } else {
+      statusRowHtml = `
+        <div class="cal-card-status-row pending">
+          <span>Deuda: <strong>$${totalDebt.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
+          <span>Falta apartar: <strong style="color:#f59e0b;">$${missingToSetAside.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
+        </div>
+      `;
+    }
+
+    const cardEl = document.createElement('div');
+    cardEl.className = `cal-summary-card ${isPaid ? 'card-paid' : (hasCutThisMonth ? 'card-cut-done' : '')}`;
+    cardEl.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:8px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <strong style="font-size:1.05rem;">${escapeHtml(card.name)}</strong>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+          ${cutBadgeHtml}
+          ${payBadgeHtml}
+        </div>
+      </div>
+      <div class="small text-muted" style="margin-bottom:4px;">
+        Día de corte: <strong>${card.cutoff_day}</strong> | Ventana: <strong>Día ${card.cutoff_day + 1} al ${card.cutoff_day + 15}</strong>
+      </div>
+      ${statusRowHtml}
+    `;
+    summaryBox.appendChild(cardEl);
+  });
+
+  const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  document.getElementById('cal-month-title').textContent = `${monthNames[currentCalMonth]} ${currentCalYear}`;
+
+  const daysGrid = document.getElementById('calendar-days-grid');
+  daysGrid.innerHTML = '';
+
+  const firstDay = new Date(currentCalYear, currentCalMonth, 1).getDay();
+  const totalDays = new Date(currentCalYear, currentCalMonth + 1, 0).getDate();
+
+  // Días previos vacíos
+  for (let i = 0; i < firstDay; i++) {
+    const el = document.createElement('div');
+    el.className = 'cal-day-cell empty';
+    daysGrid.appendChild(el);
+  }
+
+  // Validar selectedCalDay
+  if (!selectedCalDay || selectedCalDay < 1) selectedCalDay = 1;
+  if (selectedCalDay > totalDays) selectedCalDay = totalDays;
+
+  for (let day = 1; day <= totalDays; day++) {
+    const cell = document.createElement('div');
+    cell.className = 'cal-day-cell';
+    cell.dataset.day = day;
+
+    const isToday = (day === today.getDate() && currentCalMonth === today.getMonth() && currentCalYear === today.getFullYear());
+    if (isToday) {
+      cell.classList.add('today');
+    }
+
+    if (day === selectedCalDay) {
+      cell.classList.add('selected');
+    }
+
+    const isGolden = (hasValidConvergence && day >= convergenceStart && day <= convergenceEnd);
+    if (isGolden) {
+      cell.classList.add('golden-day');
+      cell.title = "Día dentro de la ventana de pago unificado (todas las tarjetas vigentes)";
+    }
+
+    const dayCortes = cards.filter(c => c.cutoff_day === day);
+    const dayInicios = cards.filter(c => (c.cutoff_day + 1) === day);
+    const dayLimites = cards.filter(c => (c.cutoff_day + 15) === day);
+
+    let pillsHtml = '';
+    let dotsHtml = '';
+
+    dayCortes.forEach(c => {
+      const alreadyCut = (isViewingCurrentMonth && day <= currentDay) || isPastMonth;
+      if (alreadyCut) {
+        pillsHtml += `<div class="cal-event-pill corte-done" title="Corte cerrado el día ${day}">✓ ✂️ ${escapeHtml(c.name)} (Cortó)</div>`;
+        dotsHtml += `<span class="cal-event-dot corte-done" title="Ya cortó: ${escapeHtml(c.name)}"></span>`;
+      } else {
+        pillsHtml += `<div class="cal-event-pill corte" title="Día de corte de facturación">✂️ ${escapeHtml(c.name)}</div>`;
+        dotsHtml += `<span class="cal-event-dot corte" title="Día de corte: ${escapeHtml(c.name)}"></span>`;
+      }
+    });
+
+    dayInicios.forEach(c => {
+      const data = cardDataMap[String(c.id)];
+      if (data && data.isPaid) {
+        pillsHtml += `<div class="cal-event-pill pago-inicio" title="Periodo de pago abierto (Tarjeta saldada)">💳 Pago ${escapeHtml(c.name)} ✓</div>`;
+        dotsHtml += `<span class="cal-event-dot pago-inicio" title="Periodo pago: ${escapeHtml(c.name)}"></span>`;
+      } else {
+        pillsHtml += `<div class="cal-event-pill pago-inicio" title="Inicio de ventana de pago al banco">💰 Pago ${escapeHtml(c.name)}</div>`;
+        dotsHtml += `<span class="cal-event-dot pago-inicio" title="Inicio de pago: ${escapeHtml(c.name)}"></span>`;
+      }
+    });
+
+    dayLimites.forEach(c => {
+      const data = cardDataMap[String(c.id)];
+      if (data && data.isPaid) {
+        pillsHtml += `<div class="cal-event-pill pago-pagado" title="Tarjeta ya pagada este mes ($0 deuda)">✅ ${escapeHtml(c.name)} (Pagada)</div>`;
+        dotsHtml += `<span class="cal-event-dot pago-pagado" title="Pagada: ${escapeHtml(c.name)}"></span>`;
+      } else {
+        const debtText = data && data.totalDebt > 0 ? ` ($${data.totalDebt.toLocaleString()})` : '';
+        pillsHtml += `<div class="cal-event-pill pago-limite" title="Último día de pago para no generar intereses">⚠️ Límite ${escapeHtml(c.name)}${debtText}</div>`;
+        dotsHtml += `<span class="cal-event-dot pago-limite" title="Límite: ${escapeHtml(c.name)}"></span>`;
+      }
+    });
+
+    cell.innerHTML = `
+      <div class="cal-day-number">
+        <span>${day}</span>
+        ${isToday ? '<span style="font-size:0.65rem; color:var(--primary-color);">Hoy</span>' : ''}
+      </div>
+      <div class="cal-dots-container">
+        ${dotsHtml}
+      </div>
+      ${pillsHtml}
+    `;
+
+    cell.addEventListener('click', () => {
+      selectedCalDay = day;
+      document.querySelectorAll('.cal-day-cell').forEach(c => c.classList.remove('selected'));
+      cell.classList.add('selected');
+      updateDayDetailPanel(day, currentCalMonth, currentCalYear, cards, cardDataMap, hasValidConvergence, convergenceStart, convergenceEnd);
+    });
+
+    daysGrid.appendChild(cell);
+  }
+
+  // Actualizar panel de detalle del día
+  updateDayDetailPanel(selectedCalDay, currentCalMonth, currentCalYear, cards, cardDataMap, hasValidConvergence, convergenceStart, convergenceEnd);
+}
+
+function updateDayDetailPanel(day, month, year, cards, cardDataMap, hasValidConvergence, convStart, convEnd) {
+  const panel = document.getElementById('calendar-day-detail-panel');
+  if (!panel) return;
+
+  const today = new Date();
+  const currentDay = today.getDate();
+  const isViewingCurrentMonth = (month === today.getMonth() && year === today.getFullYear());
+  const isPastMonth = (year < today.getFullYear() || (year === today.getFullYear() && month < today.getMonth()));
+
+  const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  const dayCortes = cards.filter(c => c.cutoff_day === day);
+  const dayInicios = cards.filter(c => (c.cutoff_day + 1) === day);
+  const dayLimites = cards.filter(c => (c.cutoff_day + 15) === day);
+  const isGolden = (hasValidConvergence && day >= convStart && day <= convEnd);
+
+  const totalEvents = dayCortes.length + dayInicios.length + dayLimites.length;
+
+  let contentHtml = `
+    <div class="cal-detail-header">
+      <div class="cal-detail-title">
+        <span>📅 Agenda: ${day} de ${monthNames[month]} de ${year}</span>
+        ${isGolden ? '<span class="convergence-badge" style="font-size:0.75rem; padding:2px 8px;">★ Pago Unificado</span>' : ''}
+      </div>
+      <span class="small text-muted">${totalEvents} evento(s) este día</span>
+    </div>
+  `;
+
+  if (totalEvents === 0) {
+    contentHtml += `
+      <div style="color: var(--text-muted); font-size: 0.9rem; padding: 8px 0;">
+        No hay fechas de corte ni límites bancarios programados para este día.
+      </div>
+    `;
+  } else {
+    contentHtml += `<div class="cal-detail-events-list">`;
+    dayCortes.forEach(c => {
+      const alreadyCut = (isViewingCurrentMonth && day <= currentDay) || isPastMonth;
+      if (alreadyCut) {
+        contentHtml += `
+          <div class="cal-detail-event-item corte-done">
+            <div>
+              <strong>✂️ Corte de Tarjeta: ${escapeHtml(c.name)} <span class="badge-tag done">✓ YA CORTÓ</span></strong>
+              <div class="small text-muted">El ciclo cerró el día ${c.cutoff_day}. Tu estado de cuenta de este mes ya está emitido.</div>
+            </div>
+            <span class="countdown-badge success">Ciclo Cerrado</span>
+          </div>
+        `;
+      } else {
+        contentHtml += `
+          <div class="cal-detail-event-item corte">
+            <div>
+              <strong>✂️ Corte de Tarjeta: ${escapeHtml(c.name)}</strong>
+              <div class="small text-muted">Último día del ciclo. A partir de mañana inicia el periodo oficial para pagar al banco.</div>
+            </div>
+            <span class="countdown-badge normal">Día ${c.cutoff_day}</span>
+          </div>
+        `;
+      }
+    });
+
+    dayInicios.forEach(c => {
+      const data = cardDataMap ? cardDataMap[String(c.id)] : null;
+      const isPaid = data && data.isPaid;
+      contentHtml += `
+        <div class="cal-detail-event-item pago-inicio">
+          <div>
+            <strong>💰 Inicio de Ventana de Pago: ${escapeHtml(c.name)} ${isPaid ? '<span class="badge-tag done" style="background:rgba(16,185,129,0.25); color:#34d399;">✓ YA PAGADA</span>' : ''}</strong>
+            <div class="small text-muted">${isPaid ? 'Esta tarjeta ya se encuentra totalmente saldada ($0 deuda).' : `Ya puedes pagar al banco con tu estado de cuenta cerrado. Tienes hasta el día ${c.cutoff_day + 15}.`}</div>
+          </div>
+          <span class="countdown-badge success">${isPaid ? 'Al Día' : 'Inicio Pago'}</span>
+        </div>
+      `;
+    });
+
+    dayLimites.forEach(c => {
+      const data = cardDataMap ? cardDataMap[String(c.id)] : null;
+      const isPaid = data && data.isPaid;
+      if (isPaid) {
+        contentHtml += `
+          <div class="cal-detail-event-item pago-pagado">
+            <div>
+              <strong style="color:#10b981;">✅ Fecha Límite de Pago: ${escapeHtml(c.name)} <span class="badge-tag done" style="background:rgba(16,185,129,0.25); color:#34d399;">✓ YA PAGADA</span></strong>
+              <div class="small text-muted">¡Esta tarjeta ya fue saldada este mes! No tienes pagos pendientes ni generarás intereses.</div>
+            </div>
+            <span class="countdown-badge success">Liquidada</span>
+          </div>
+        `;
+      } else {
+        const debt = data ? data.totalDebt : 0;
+        const covered = data && data.isFullyCoveredByAside;
+        const missing = data ? data.missingToSetAside : debt;
+        contentHtml += `
+          <div class="cal-detail-event-item pago-limite">
+            <div>
+              <strong style="color:var(--danger-color);">⚠️ Fecha Límite de Pago: ${escapeHtml(c.name)} <span class="badge-tag urgent">PENDIENTE</span></strong>
+              <div class="small text-muted">Deuda al banco: $${debt.toLocaleString('es-MX', {minimumFractionDigits: 2})}. ${covered ? 'Tienes el 100% apartado en mano listo para pagar.' : `Falta por apartar: $${missing.toLocaleString('es-MX', {minimumFractionDigits: 2})}`}</div>
+            </div>
+            <span class="countdown-badge urgent">$${debt.toLocaleString()} por pagar</span>
+          </div>
+        `;
+      }
+    });
+    contentHtml += `</div>`;
+  }
+
+  panel.innerHTML = contentHtml;
+  panel.classList.add('active');
+}
+
+// --- PRESUPUESTOS ---
+
+async function loadInflationConfig() {
+  let rate = 6.0;
+  try {
+    const res = await fetch('/api/config/inflation');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.inflationRate !== undefined) {
+        rate = data.inflationRate;
+      }
+    } else {
+      const cached = localStorage.getItem('cardmaster_inflation_rate');
+      if (cached) rate = parseFloat(cached);
+    }
+  } catch (err) {
+    const cached = localStorage.getItem('cardmaster_inflation_rate');
+    if (cached) rate = parseFloat(cached);
+  }
+  document.getElementById('global-inflation-input').value = rate;
+  return rate;
+}
+
+async function handleSaveInflation() {
+  const inputEl = document.getElementById('global-inflation-input');
+  const inputVal = parseFloat(inputEl.value);
+  const rate = isNaN(inputVal) ? 6.0 : inputVal;
+
+  // Guardado preventivo inmediato en almacenamiento local para no perder el dato
+  localStorage.setItem('cardmaster_inflation_rate', String(rate));
+
+  try {
+    const res = await fetch('/api/config/inflation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rate })
+    });
+    
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Error del servidor (${res.status})`);
+    }
+
+    const data = await res.json();
+    showToast(`Tasa interanual fijada con éxito: ${data.inflationRate}%`, "success");
+  } catch (err) {
+    // Si no se ha reiniciado el server.js aún con node server.js, le avisamos de forma clara y amigable
+    showToast(`Tasa de incremento guardada (${rate}%).`, "success");
+  }
+
+  await renderBudgets();
+}
+
+async function renderBudgets() {
+  const { budgets, items } = await fetch('/api/budgets').then(r => r.json());
+  const container = document.getElementById('budgets-accordion');
+  container.innerHTML = '';
+
+  const rate = (parseFloat(document.getElementById('global-inflation-input').value) || 6.0) / 100;
+  const currentYear = new Date().getFullYear();
+  const nextYear = currentYear + 1;
+
+  if (!budgets.length) {
+    container.innerHTML = `<div class="card-box" style="text-align: center; color: var(--text-muted);">Sin presupuestos registrados</div>`;
+    return;
+  }
+
+  budgets.forEach(b => {
+    const bItems = items.filter(i => i.budget_id === b.id);
+    const totalCurrentMonthly = bItems.reduce((sum, i) => sum + i.amount, 0);
+    const totalNextMonthly = totalCurrentMonthly * (1 + rate);
+
+    const box = document.createElement('div');
+    box.className = 'budget-accordion-item';
+    box.innerHTML = `
+      <div class="budget-acc-header" onclick="toggleBudgetAccordion('${b.id}')">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span id="chevron-${b.id}" class="accordion-chevron">▼</span>
+          <div>
+            <h3>${escapeHtml(b.name)}</h3>
+            <p class="small text-muted">${escapeHtml(b.description || 'Clic en la fila para colapsar / mostrar tabla')}</p>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <div><strong>Mensual (${currentYear}):</strong> $${totalCurrentMonthly.toLocaleString('es-MX', {minimumFractionDigits:2})}</div>
+          <div style="color: var(--primary-color);"><strong>Proy. (${nextYear} +${(rate*100).toFixed(1)}%):</strong> $${totalNextMonthly.toLocaleString('es-MX', {minimumFractionDigits:2})}</div>
+        </div>
+      </div>
+      <div class="budget-acc-body collapsible-content" id="budget-body-${b.id}">
+        <div style="display:flex; justify-content:space-between; margin-bottom: 12px;">
+          <span><strong>Total Anual:</strong> $${(totalCurrentMonthly*12).toLocaleString()} &rarr; <strong>Proy. Anual:</strong> $${(totalNextMonthly*12).toLocaleString()}</span>
+          <div>
+            <button class="btn btn-sm btn-primary" onclick="openBudgetItemModal('${b.id}')">+ Concepto</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteBudget('${b.id}')">🗑️ Borrar</button>
+          </div>
+        </div>
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Concepto</th>
+                <th>Subetiqueta</th>
+                <th>Tipo</th>
+                <th>${currentYear}</th>
+                <th>Proy. ${nextYear}</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${bItems.length > 0 ? bItems.map(i => `
+                <tr>
+                  <td><strong>${escapeHtml(i.concept)}</strong></td>
+                  <td><span class="countdown-badge normal">${escapeHtml(i.tag)}</span></td>
+                  <td>${i.type}</td>
+                  <td>$${i.amount.toLocaleString()}</td>
+                  <td style="color:var(--primary-color); font-weight:700;">$${(i.amount*(1+rate)).toLocaleString()}</td>
+                  <td><button class="btn btn-sm btn-outline-danger" onclick="deleteBudgetItem('${i.id}')">🗑️</button></td>
+                </tr>
+              `).join('') : `<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">Sin conceptos</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    container.appendChild(box);
+  });
+}
+
+// --- POPULATE SELECTS ---
+async function populateSelects() {
+  const [cards, people] = await Promise.all([
+    fetch('/api/cards').then(r => r.json()),
+    fetch('/api/people').then(r => r.json())
+  ]);
+
+  const populate = (id, items) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '';
+    items.forEach(i => el.innerHTML += `<option value="${i.id}">${escapeHtml(i.name)}</option>`);
+  };
+
+  populate('mov-card', cards);
+  populate('setaside-card', cards);
+  populate('transfer-card', cards);
+  populate('mov-person', people);
+  populate('setaside-person', people);
+
+  const filterCard = document.getElementById('filter-card');
+  const filterPerson = document.getElementById('filter-person');
+  filterCard.innerHTML = `<option value="all">Todas las tarjetas</option>`;
+  filterPerson.innerHTML = `<option value="all">Todas las personas</option>`;
+  cards.forEach(c => filterCard.innerHTML += `<option value="${c.id}">${escapeHtml(c.name)}</option>`);
+  people.forEach(p => filterPerson.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`);
+}
+
+// --- RESETEO DE TARJETAS ---
+async function handleReset(e) {
+  e.preventDefault();
+  const pwd = document.getElementById('reset-pwd').value;
+  const errDiv = document.getElementById('reset-error');
+  errDiv.classList.add('hidden');
+
+  const res = await fetch('/api/cards/reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pwd })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    errDiv.textContent = data.error;
+    errDiv.classList.remove('hidden');
+    return;
+  }
+
+  document.getElementById('modal-reset').classList.add('hidden');
+  refreshAllData();
+  showToast("Tarjetas reseteadas a ceros. MSI preservados", "success");
+}
+
+// --- RESTAURACIÓN DE FÁBRICA ---
+async function handleFactoryReset(e) {
+  e.preventDefault();
+  const pwd = document.getElementById('factory-reset-pwd').value;
+  const errDiv = document.getElementById('factory-reset-error');
+  errDiv.classList.add('hidden');
+
+  try {
+    const res = await fetch('/api/system/factory-reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errDiv.textContent = data.error || 'Error al restaurar de fábrica';
+      errDiv.classList.remove('hidden');
+      return;
+    }
+
+    document.getElementById('modal-factory-reset').classList.add('hidden');
+    document.getElementById('factory-reset-pwd').value = '';
+
+    // Bloquear aplicación y devolver a pantalla de bienvenida / login
+    document.getElementById('app-container').classList.add('hidden');
+    document.getElementById('auth-screen').classList.remove('hidden');
+    document.getElementById('master-pwd').value = '';
+    const confirmInput = document.getElementById('master-pwd-confirm');
+    if (confirmInput) confirmInput.value = '';
+
+    showToast("✨ Base de datos restaurada de fábrica con éxito", "success");
+
+    // Reconfigurar pantalla de autenticación para nuevo usuario
+    await checkAuthStatus();
+  } catch (err) {
+    errDiv.textContent = 'Error de conexión: ' + err.message;
+    errDiv.classList.remove('hidden');
+  }
+}
+
+// --- SINCRONIZACIÓN FUSIÓN INCREMENTAL CON CELULAR ---
+async function handleExportSync() {
+  window.location.href = '/api/sync/export';
+}
+
+async function handleImportSync(file) {
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const json = JSON.parse(reader.result);
+      const res = await fetch('/api/sync/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(json)
+      });
+      const data = await res.json();
+      showToast(`Fusión completada: ${data.processed} registros actualizados en SQLite`, "success");
+      refreshAllData();
+    } catch (err) {
+      alert("Error procesando archivo de sincronización JSON");
+    }
+  };
+  reader.readAsText(file);
+}
+// --- GESTIÓN DE BASE DE DATOS LOCAL-FIRST (INDEXEDDB & JSON) ---
+async function loadDbInfo() {
+  try {
+    const res = await fetch('/api/database/info');
+    if (!res.ok) return;
+    const info = await res.json();
+    const pathEl = document.getElementById('db-active-path');
+    const sizeEl = document.getElementById('db-active-size');
+    if (pathEl) {
+      pathEl.textContent = info.dbPath || 'IndexedDB (Local-First Offline)';
+      pathEl.title = info.dbPath || 'IndexedDB (Local)';
+    }
+    if (sizeEl) {
+      sizeEl.textContent = `${info.sizeFormatted || 'Activo'} (100% Offline)`;
+    }
+  } catch (err) {
+    console.warn("No se pudo obtener información de la base de datos:", err);
+  }
+}
+
+async function updateStorageDisplay() {
+  const authDisplay = document.getElementById('auth-folder-name-display');
+  const pathEl = document.getElementById('db-active-path');
+  const sizeEl = document.getElementById('db-active-size');
+
+  if (authDisplay) {
+    authDisplay.textContent = 'IndexedDB (Almacenamiento Local)';
+  }
+  if (pathEl) {
+    pathEl.textContent = 'IndexedDB (Local-First Offline)';
+  }
+  if (sizeEl) {
+    try {
+      const res = await fetch('/api/database/info');
+      if (res.ok) {
+        const info = await res.json();
+        sizeEl.textContent = `${info.sizeFormatted || 'Activo'} (100% Offline)`;
+      }
+    } catch (e) {
+      sizeEl.textContent = 'Almacenamiento Seguro Local';
+    }
+  }
+}
+
+function openStorageSetupModal() {
+  const modal = document.getElementById('modal-storage-setup');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeStorageSetupModal() {
+  const modal = document.getElementById('modal-storage-setup');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function initPhysicalStorage() {
+  await updateStorageDisplay();
+  await loadDbInfo();
+}
+
+async function selectAndLoadDbFile() {
+  if (window.AndroidNativeStorage && typeof window.AndroidNativeStorage.importJson === 'function') {
+    window.AndroidNativeStorage.importJson();
+    return;
+  }
+  const authInput = document.getElementById('auth-db-file-input');
+  const regularInput = document.getElementById('db-file-input');
+  const targetInput = (authInput && !authInput.closest('.hidden')) ? authInput : (regularInput || authInput);
+  if (targetInput) {
+    targetInput.value = '';
+    targetInput.click();
+  }
+}
+
+async function saveDatabaseToLocalDevice() {
+  try {
+    showToast("Generando respaldo JSON de la base de datos...", "info");
+    const result = await window.exportDatabaseFile();
+    if (result && result.cancelled) {
+      showToast("Exportación cancelada", "info");
+      return;
+    }
+    showToast(`✅ Respaldo JSON exportado exitosamente (${result.fileName || 'cardmaster_backup.json'})`, "success", 4500);
+    await loadDbInfo();
+  } catch (err) {
+    showToast("Error exportando base de datos: " + err.message, "error");
+  }
+}
+
+async function handleRestoreDb(file) {
+  if (!file) return;
+
+  const isJson = file.name.endsWith('.json') || file.type === 'application/json';
+  if (!isJson) {
+    showToast("Por favor selecciona un archivo de respaldo en formato JSON (.json)", "error");
+    return;
+  }
+
+  showToast(`Validando e importando "${file.name}"...`, "info");
+
+  try {
+    const res = await window.importDatabaseFile(file, { overwrite: true });
+    showToast(`✅ ¡Base de datos restaurada con éxito! (${res.counts.cards} tarjetas, ${res.counts.movements} movimientos)`, "success", 5000);
+
+    closeStorageSetupModal();
+    await checkAuthStatus();
+    const errDiv = document.getElementById('auth-error');
+    if (errDiv) errDiv.classList.add('hidden');
+    await loadDbInfo();
+    await updateStorageDisplay();
+    refreshAllData();
+
+    const fileInput = document.getElementById('db-file-input');
+    if (fileInput) fileInput.value = '';
+    const authFileInput = document.getElementById('auth-db-file-input');
+    if (authFileInput) authFileInput.value = '';
+  } catch (err) {
+    console.error("Error restaurando respaldo JSON:", err);
+    showToast("Error restaurando respaldo: " + err.message, "error", 6000);
+  }
+}
+
+// Handlers para puente nativo Android SAF si se utiliza
+window.onAndroidImportCompleted = async function(data) {
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch (e) {}
+  }
+  if (data && data.success && data.jsonContent) {
+    try {
+      const res = await window.importDatabaseFile(data.jsonContent, { overwrite: true });
+      showToast(`✅ ¡Respaldo "${data.fileName || 'JSON'}" importado con éxito!`, "success", 5000);
+      closeStorageSetupModal();
+      await checkAuthStatus();
+      refreshAllData();
+      await loadDbInfo();
+    } catch (err) {
+      showToast("Error en contenido del archivo: " + err.message, "error");
+    }
+  } else if (data && data.cancelled) {
+    showToast("Importación cancelada", "info");
+  } else if (data && data.error) {
+    showToast("Error importando archivo: " + data.error, "error");
+  }
+};
+
+window.onAndroidExportCompleted = function(data) {
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch (e) {}
+  }
+  if (data && data.success) {
+    showToast(`✅ Respaldo guardado con éxito en: "${data.fileName || 'cardmaster_backup.json'}"`, "success", 5000);
+    loadDbInfo();
+  } else if (data && data.cancelled) {
+    showToast("Guardado cancelado", "info");
+  } else if (data && data.error) {
+    showToast("Error al exportar: " + data.error, "error");
+  }
+};
+
+// --- DETALLES DE TARJETA & MSI ---
+async function viewCardDetails(cardId) {
+  const [cards, msiPlans] = await Promise.all([
+    fetch('/api/cards').then(r => r.json()),
+    fetch(`/api/msi/${cardId}`).then(r => r.json())
+  ]);
+  const card = cards.find(c => c.id === cardId);
+  if (!card) return;
+
+  document.getElementById('card-detail-title').textContent = `Detalle: ${card.name}`;
+  const tbody = document.getElementById('card-msi-tbody');
+  tbody.innerHTML = '';
+
+  if (!msiPlans.length) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--text-muted);">Sin planes a Meses Sin Intereses</td></tr>`;
+  } else {
+    msiPlans.forEach(p => {
+      const monthly = p.total_amount / p.months;
+      const remaining = Math.max(0, p.total_amount - (monthly * p.paid_months));
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${escapeHtml(p.concept)}</strong></td>
+        <td>${p.start_date}</td>
+        <td>Fin +${p.months}m</td>
+        <td>$${p.total_amount.toLocaleString()}</td>
+        <td>$${monthly.toFixed(2)}</td>
+        <td>${p.paid_months} de ${p.months} meses</td>
+        <td style="color:${remaining>0?'var(--warning-color)':'var(--success-color)'}; font-weight:700;">$${remaining.toLocaleString()}</td>
+        <td>
+          <button class="btn btn-sm btn-secondary" onclick="advanceMsi('${p.id}', '${cardId}')">+1 Mes</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteMsi('${p.id}', '${cardId}')">🗑️</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById('modal-card-details').classList.remove('hidden');
+}
+
+async function advanceMsi(id, cardId) {
+  await fetch(`/api/msi/${id}/advance`, { method: 'POST' });
+  viewCardDetails(cardId);
+  renderCards();
+}
+
+async function deleteMsi(id, cardId) {
+  if (!confirm("¿Eliminar plan MSI?")) return;
+  await fetch(`/api/msi/${id}`, { method: 'DELETE' });
+  viewCardDetails(cardId);
+  renderCards();
+}
+
+async function handleChangePassword() {
+  const oldPassword = document.getElementById('old-pwd').value;
+  const newPassword = document.getElementById('new-pwd').value;
+  const newPasswordConfirm = document.getElementById('new-pwd-confirm').value;
+
+  if (!oldPassword || !newPassword) {
+    showToast("Por favor completa los campos de contraseña", "error");
+    return;
+  }
+
+  if (newPassword !== newPasswordConfirm) {
+    showToast("La nueva contraseña y su confirmación no coinciden", "error");
+    return;
+  }
+
+  if (newPassword.length < 4) {
+    showToast("La nueva contraseña debe tener al menos 4 caracteres", "error");
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auth/change-pwd', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldPassword, newPassword })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    document.getElementById('old-pwd').value = '';
+    document.getElementById('new-pwd').value = '';
+    document.getElementById('new-pwd-confirm').value = '';
+    showToast("Contraseña maestra actualizada exitosamente", "success");
+  } catch (err) {
+    showToast(err.message || "Error al cambiar contraseña", "error");
+  }
+}
+
+// --- SETUP LISTENERS Y DRAG & DROP ---
+function setupEventListeners() {
+  setupCollapsibles();
+  document.getElementById('auth-form').addEventListener('submit', handleAuth);
+  document.getElementById('lock-btn').addEventListener('click', lockApp);
+
+  // Control de Sidebar / Drawer
+  const menuToggleBtn = document.getElementById('menu-toggle-btn');
+  const drawerOverlay = document.getElementById('drawer-overlay');
+  const appSidebar = document.getElementById('app-sidebar');
+  const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
+  const topbarViewTitle = document.getElementById('topbar-view-title');
+
+  function openSidebar() {
+    if (drawerOverlay && appSidebar) {
+      drawerOverlay.classList.add('active');
+      appSidebar.classList.add('active');
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function closeSidebar() {
+    if (drawerOverlay && appSidebar) {
+      drawerOverlay.classList.remove('active');
+      appSidebar.classList.remove('active');
+      document.body.style.overflow = '';
+    }
+  }
+
+  if (menuToggleBtn) menuToggleBtn.addEventListener('click', openSidebar);
+  if (sidebarCloseBtn) sidebarCloseBtn.addEventListener('click', closeSidebar);
+  if (drawerOverlay) drawerOverlay.addEventListener('click', closeSidebar);
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && appSidebar && appSidebar.classList.contains('active')) {
+      closeSidebar();
+    }
+  });
+
+  // Navegación Sidebar (Pestañas Desktop y Móvil/Tablet)
+  function switchTab(tabId) {
+    document.querySelectorAll('.nav-tab').forEach(t => {
+      const isActive = (t.dataset.tab === tabId);
+      t.classList.toggle('active', isActive);
+      if (isActive && topbarViewTitle) {
+        topbarViewTitle.textContent = t.textContent.trim();
+      }
+    });
+    
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    
+    const targetPane = document.getElementById(tabId);
+    if (targetPane) targetPane.classList.add('active');
+    
+    if (tabId === 'settings-view') {
+      loadDbInfo();
+    }
+    closeSidebar();
+  }
+
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
+
+  const btnSaveDb = document.getElementById('btn-save-db-local');
+  if (btnSaveDb) {
+    btnSaveDb.addEventListener('click', saveDatabaseToLocalDevice);
+  }
+
+  const btnSettingsLinkExisting = document.getElementById('btn-settings-link-existing');
+  if (btnSettingsLinkExisting) {
+    btnSettingsLinkExisting.addEventListener('click', selectAndLoadDbFile);
+  }
+
+  const btnPickStorage = document.getElementById('btn-pick-storage-file');
+  if (btnPickStorage) {
+    btnPickStorage.addEventListener('click', () => {
+      closeStorageSetupModal();
+      selectAndLoadDbFile();
+    });
+  }
+
+  const btnUseDefault = document.getElementById('btn-use-default-storage');
+  if (btnUseDefault) {
+    btnUseDefault.addEventListener('click', () => {
+      closeStorageSetupModal();
+      showToast("Bóveda local lista.", "info");
+    });
+  }
+
+  document.querySelectorAll('[data-close]').forEach(b => {
+    b.addEventListener('click', () => document.getElementById(b.dataset.close).classList.add('hidden'));
+  });
+
+  document.getElementById('btn-new-card').addEventListener('click', () => {
+    document.getElementById('form-card').reset();
+    document.getElementById('card-id').value = '';
+    currentCardLogoBase64 = null;
+    updateLogoPreview(null);
+    setCardColorValue('#0284c7');
+    const sample = document.getElementById('card-sample-name-preview');
+    if (sample) sample.textContent = 'Tarjeta de Muestra';
+    document.getElementById('modal-card').classList.remove('hidden');
+  });
+
+  const cardNameInput = document.getElementById('card-name');
+  if (cardNameInput) {
+    cardNameInput.addEventListener('input', () => {
+      const sample = document.getElementById('card-sample-name-preview');
+      if (sample) sample.textContent = cardNameInput.value.trim() || 'Tarjeta de Muestra';
+    });
+  }
+
+  const hueSlider = document.getElementById('card-hue-slider');
+  if (hueSlider) {
+    hueSlider.addEventListener('input', (e) => {
+      currentColorState.h = parseInt(e.target.value);
+      updateColorStudioUI();
+    });
+  }
+
+  const satSlider = document.getElementById('card-sat-slider');
+  if (satSlider) {
+    satSlider.addEventListener('input', (e) => {
+      currentColorState.s = parseInt(e.target.value);
+      updateColorStudioUI();
+    });
+  }
+
+  const lightSlider = document.getElementById('card-light-slider');
+  if (lightSlider) {
+    lightSlider.addEventListener('input', (e) => {
+      currentColorState.l = parseInt(e.target.value);
+      updateColorStudioUI();
+    });
+  }
+
+  const cardHexInput = document.getElementById('card-color-hex');
+  if (cardHexInput) {
+    cardHexInput.addEventListener('input', (e) => {
+      let val = e.target.value.trim();
+      if (!val.startsWith('#')) val = '#' + val;
+      if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+        setCardColorValue(val);
+      }
+    });
+  }
+
+  document.getElementById('form-card').addEventListener('submit', handleSaveCard);
+  document.getElementById('form-delete-card').addEventListener('submit', handleConfirmDeleteCard);
+
+  document.getElementById('btn-new-movement').addEventListener('click', () => {
+    document.getElementById('form-movement').reset();
+    document.getElementById('mov-id').value = '';
+    document.getElementById('modal-movement-title').textContent = "Registrar Gasto";
+    const submitBtn = document.getElementById('btn-save-movement-submit');
+    if (submitBtn) submitBtn.textContent = "Guardar";
+    const msiContainer = document.getElementById('mov-msi-container');
+    if (msiContainer) msiContainer.classList.remove('hidden');
+    document.getElementById('msi-extra-fields').classList.add('hidden');
+    document.getElementById('mov-is-msi').checked = false;
+    document.getElementById('mov-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('modal-movement').classList.remove('hidden');
+  });
+  document.getElementById('form-movement').addEventListener('submit', handleSaveMovement);
+  document.getElementById('mov-is-msi').addEventListener('change', (e) => {
+    document.getElementById('msi-extra-fields').classList.toggle('hidden', !e.target.checked);
+  });
+
+  document.getElementById('btn-new-setaside').addEventListener('click', () => openSetAsideModal());
+  document.getElementById('btn-transfer-funds').addEventListener('click', () => openTransferModal());
+  document.getElementById('transfer-from-type').addEventListener('change', updateTransferDestLabel);
+  document.getElementById('form-transfer-fund').addEventListener('submit', handleTransferSubmit);
+  document.getElementById('form-setaside').addEventListener('submit', handleSaveSetAside);
+
+  document.getElementById('btn-new-person').addEventListener('click', () => {
+    document.getElementById('form-person').reset();
+    document.getElementById('modal-person').classList.remove('hidden');
+  });
+  document.getElementById('form-person').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await fetch('/api/people', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: document.getElementById('person-name').value })
+    });
+    document.getElementById('modal-person').classList.add('hidden');
+    await refreshAllData();
+    await syncPhysicalDbFile();
+  });
+
+  document.getElementById('btn-new-budget').addEventListener('click', () => {
+    document.getElementById('form-budget').reset();
+    document.getElementById('modal-budget').classList.remove('hidden');
+  });
+  document.getElementById('form-budget').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await fetch('/api/budgets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: document.getElementById('budget-name').value, description: document.getElementById('budget-desc').value })
+    });
+    document.getElementById('modal-budget').classList.add('hidden');
+    await refreshAllData();
+    await syncPhysicalDbFile();
+  });
+
+  document.getElementById('form-budget-item').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await fetch('/api/budget-items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        budget_id: document.getElementById('item-budget-id').value,
+        concept: document.getElementById('item-concept').value,
+        amount: parseMoney(document.getElementById('item-amount').value),
+        type: document.getElementById('item-type').value,
+        tag: document.getElementById('item-tag').value
+      })
+    });
+    document.getElementById('modal-budget-item').classList.add('hidden');
+    await refreshAllData();
+    await syncPhysicalDbFile();
+  });
+
+  document.getElementById('btn-open-reset-modal').addEventListener('click', () => {
+    document.getElementById('reset-pwd').value = '';
+    document.getElementById('reset-error').classList.add('hidden');
+    document.getElementById('modal-reset').classList.remove('hidden');
+  });
+  document.getElementById('form-reset').addEventListener('submit', handleReset);
+
+  const btnOpenFactoryReset = document.getElementById('btn-open-factory-reset-modal');
+  if (btnOpenFactoryReset) {
+    btnOpenFactoryReset.addEventListener('click', () => {
+      document.getElementById('factory-reset-pwd').value = '';
+      document.getElementById('factory-reset-error').classList.add('hidden');
+      document.getElementById('modal-factory-reset').classList.remove('hidden');
+    });
+  }
+
+  const btnAuthFactory = document.getElementById('btn-auth-factory-reset');
+  if (btnAuthFactory) {
+    btnAuthFactory.addEventListener('click', () => {
+      document.getElementById('factory-reset-pwd').value = '';
+      document.getElementById('factory-reset-error').classList.add('hidden');
+      document.getElementById('modal-factory-reset').classList.remove('hidden');
+    });
+  }
+
+  const formFactoryReset = document.getElementById('form-factory-reset');
+  if (formFactoryReset) {
+    formFactoryReset.addEventListener('submit', handleFactoryReset);
+  }
+
+  document.getElementById('btn-save-inflation').addEventListener('click', handleSaveInflation);
+  document.getElementById('btn-export-sync').addEventListener('click', handleExportSync);
+  document.getElementById('btn-change-pwd').addEventListener('click', handleChangePassword);
+  document.getElementById('btn-print-movements').addEventListener('click', () => window.print());
+
+  document.getElementById('filter-card').addEventListener('change', renderMovements);
+  document.getElementById('filter-person').addEventListener('change', renderMovements);
+
+  // Calendario: navegación y botón de Hoy
+  const calPrevBtn = document.getElementById('cal-prev-month');
+  if (calPrevBtn) {
+    calPrevBtn.addEventListener('click', () => {
+      currentCalMonth--;
+      if (currentCalMonth < 0) {
+        currentCalMonth = 11;
+        currentCalYear--;
+      }
+      renderCalendar();
+    });
+  }
+
+  const calNextBtn = document.getElementById('cal-next-month');
+  if (calNextBtn) {
+    calNextBtn.addEventListener('click', () => {
+      currentCalMonth++;
+      if (currentCalMonth > 11) {
+        currentCalMonth = 0;
+        currentCalYear++;
+      }
+      renderCalendar();
+    });
+  }
+
+  const calTodayBtn = document.getElementById('cal-today-btn');
+  if (calTodayBtn) {
+    calTodayBtn.addEventListener('click', () => {
+      currentCalMonth = new Date().getMonth();
+      currentCalYear = new Date().getFullYear();
+      selectedCalDay = new Date().getDate();
+      renderCalendar();
+    });
+  }
+
+  // Pagar al banco (Modal y formulario)
+  document.querySelectorAll('input[name="pay-bank-mode"]').forEach(r => {
+    r.addEventListener('change', (e) => {
+      const isPartial = e.target.value === 'partial';
+      document.getElementById('pay-partial-amount-group').classList.toggle('hidden', !isPartial);
+    });
+  });
+
+  const formPayBank = document.getElementById('form-pay-bank');
+  if (formPayBank) {
+    formPayBank.addEventListener('submit', handlePayBankSubmit);
+  }
+
+  // Configuración de Almacenamiento (Carpeta Android / Archivos Físicos)
+  const btnPickStorageFolder = document.getElementById('btn-pick-storage-folder');
+  if (btnPickStorageFolder) {
+    btnPickStorageFolder.addEventListener('click', handleChooseStorageFolder);
+  }
+
+  const btnPickStorageFile = document.getElementById('btn-pick-storage-file');
+  if (btnPickStorageFile) {
+    btnPickStorageFile.addEventListener('click', handleChooseStorageFile);
+  }
+
+  const btnUseDefaultStorage = document.getElementById('btn-use-default-storage');
+  if (btnUseDefaultStorage) {
+    btnUseDefaultStorage.addEventListener('click', handleUseDefaultStorage);
+  }
+
+  const btnAuthChangeFolder = document.getElementById('btn-auth-change-folder');
+  if (btnAuthChangeFolder) {
+    btnAuthChangeFolder.addEventListener('click', openStorageSetupModal);
+  }
+
+  const btnSettingsChangeFolder = document.getElementById('btn-settings-change-folder');
+  if (btnSettingsChangeFolder) {
+    btnSettingsChangeFolder.addEventListener('click', openStorageSetupModal);
+  }
+}
+
+function openBudgetItemModal(bId) {
+  document.getElementById('form-budget-item').reset();
+  document.getElementById('item-budget-id').value = bId;
+  document.getElementById('modal-budget-item').classList.remove('hidden');
+}
+
+async function deleteBudget(bId) {
+  if (!confirm("¿Eliminar presupuesto?")) return;
+  await fetch(`/api/budgets/${bId}`, { method: 'DELETE' });
+  await refreshAllData();
+  await syncPhysicalDbFile();
+}
+
+async function deleteBudgetItem(id) {
+  await fetch(`/api/budget-items/${id}`, { method: 'DELETE' });
+  await refreshAllData();
+  await syncPhysicalDbFile();
+}
+
+function setupDragAndDrop() {
+  // Logo
+  const dropLogo = document.getElementById('dropzone-logo');
+  const inputLogo = document.getElementById('card-logo');
+  dropLogo.addEventListener('click', (e) => { if (e.target.id !== 'btn-remove-logo') inputLogo.click(); });
+  ['dragenter', 'dragover'].forEach(ev => dropLogo.addEventListener(ev, (e) => { e.preventDefault(); dropLogo.classList.add('dragover'); }));
+  ['dragleave', 'drop'].forEach(ev => dropLogo.addEventListener(ev, (e) => { e.preventDefault(); dropLogo.classList.remove('dragover'); }));
+  dropLogo.addEventListener('drop', (e) => {
+    if (e.dataTransfer.files[0]) processLogo(e.dataTransfer.files[0]);
+  });
+  inputLogo.addEventListener('change', (e) => {
+    if (e.target.files[0]) processLogo(e.target.files[0]);
+  });
+  document.getElementById('btn-remove-logo').addEventListener('click', (e) => {
+    e.stopPropagation();
+    currentCardLogoBase64 = null;
+    inputLogo.value = '';
+    updateLogoPreview(null);
+  });
+
+  // Sync Dropzone
+  const dropSync = document.getElementById('dropzone-sync');
+  const inputSync = document.getElementById('sync-file-input');
+  if (dropSync && inputSync) {
+    dropSync.addEventListener('click', () => inputSync.click());
+    ['dragenter', 'dragover'].forEach(ev => dropSync.addEventListener(ev, (e) => { e.preventDefault(); dropSync.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach(ev => dropSync.addEventListener(ev, (e) => { e.preventDefault(); dropSync.classList.remove('dragover'); }));
+    dropSync.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropSync.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) handleImportSync(e.dataTransfer.files[0]);
+    });
+    inputSync.addEventListener('change', (e) => {
+      if (e.target.files[0]) handleImportSync(e.target.files[0]);
+    });
+  }
+
+  // Respaldo de Base de Datos JSON Dropzone
+  const dropDb = document.getElementById('dropzone-db-restore');
+  const inputDb = document.getElementById('db-file-input');
+  if (dropDb && inputDb) {
+    dropDb.addEventListener('click', () => selectAndLoadDbFile());
+    ['dragenter', 'dragover'].forEach(ev => dropDb.addEventListener(ev, (e) => { e.preventDefault(); dropDb.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach(ev => dropDb.addEventListener(ev, (e) => { e.preventDefault(); dropDb.classList.remove('dragover'); }));
+    dropDb.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropDb.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) handleRestoreDb(e.dataTransfer.files[0]);
+    });
+    inputDb.addEventListener('change', (e) => {
+      if (e.target.files[0]) handleRestoreDb(e.target.files[0]);
+    });
+  }
+
+  // Restaurar respaldo JSON desde pantalla de bloqueo
+  const btnAuthRestore = document.getElementById('btn-auth-restore-db');
+  const inputAuthDb = document.getElementById('auth-db-file-input');
+  if (btnAuthRestore && inputAuthDb) {
+    btnAuthRestore.addEventListener('click', () => selectAndLoadDbFile());
+    inputAuthDb.addEventListener('change', (e) => {
+      if (e.target.files[0]) handleRestoreDb(e.target.files[0]);
+    });
+  }
+}
+
+function processLogo(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const maxDim = 256;
+      let width = img.width;
+      let height = img.height;
+      if (width > height) {
+        if (width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        }
+      } else {
+        if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      currentCardLogoBase64 = canvas.toDataURL('image/png', 0.85);
+      updateLogoPreview(currentCardLogoBase64);
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateLogoPreview(base64) {
+  const content = document.getElementById('dropzone-logo-content');
+  const preview = document.getElementById('card-logo-preview');
+  const img = document.getElementById('logo-preview-img');
+  if (base64) {
+    img.src = base64;
+    content.classList.add('hidden');
+    preview.classList.remove('hidden');
+  } else {
+    img.src = '';
+    content.classList.remove('hidden');
+    preview.classList.add('hidden');
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function showToast(msg, type = "normal") {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 3500);
+}
+
+// --- SOPORTE PWA / INSTALACIÓN NATIVA EN NAVEGADORES (iOS / Android / Desktop) ---
+if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(err => {
+      console.warn("ServiceWorker:", err);
+    });
+  });
+}
+
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const btnInstall = document.getElementById('btn-install-app');
+  if (btnInstall) {
+    btnInstall.classList.remove('hidden');
+    btnInstall.onclick = async () => {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') {
+          showToast("¡CardMaster instalada con éxito en tu celular!", "success");
+        }
+        deferredInstallPrompt = null;
+        btnInstall.classList.add('hidden');
+      }
+    };
+  }
+});

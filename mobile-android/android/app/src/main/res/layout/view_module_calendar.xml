@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/windowBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- INFO CARD -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="14dp"
+            app:cardBackgroundColor="#131e38"
+            app:cardElevation="4dp"
+            android:layout_marginBottom="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📅 Ciclos y Fechas de Tarjetas"
+                    android:textColor="#cbd5e1"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="6dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="✂️ Corte: Cierra las compras del periodo mensual.\n💰 Gracia: ~20 días para liquidar sin recargos.\n⚠️ Límite: Día final para pagar antes de comisiones."
+                    android:textColor="#94a3b8"
+                    android:textSize="12sp"
+                    android:lineSpacingExtra="3dp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- HEADER -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Próximas Fechas por Tarjeta"
+            android:textColor="#ffffff"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <!-- EMPTY STATE -->
+        <TextView
+            android:id="@+id/tv_cal_empty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="No tienes tarjetas registradas para mostrar fechas.\nAgrega tarjetas en la pestaña 'Tarjetas'."
+            android:textColor="#64748b"
+            android:textSize="14sp"
+            android:gravity="center"
+            android:paddingVertical="32dp"
+            android:visibility="gone" />
+
+        <!-- CALENDAR LIST CONTAINER -->
+        <LinearLayout
+            android:id="@+id/layout_cal_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+    </LinearLayout>
+</ScrollView>
+

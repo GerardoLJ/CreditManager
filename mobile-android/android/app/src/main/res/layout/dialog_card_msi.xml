@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@android:color/transparent"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tv_dialog_msi_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Planes a Meses Sin Intereses"
+        android:textColor="#ffffff"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:id="@+id/tv_msi_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Esta tarjeta no tiene compras a meses sin intereses activas."
+        android:textColor="#64748b"
+        android:textSize="13sp"
+        android:paddingVertical="16dp"
+        android:gravity="center"
+        android:visibility="gone" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="360dp">
+
+        <LinearLayout
+            android:id="@+id/layout_dialog_msi_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
+</LinearLayout>
+

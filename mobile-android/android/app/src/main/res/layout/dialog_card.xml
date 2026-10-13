@@ -1,0 +1,297 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@android:color/transparent"
+        android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tv_dialog_card_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Nueva Tarjeta de Crédito"
+        android:textColor="#ffffff"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Nombre de la Tarjeta (ej. Santander LikeU)"
+        android:textColor="#94a3b8"
+        android:textSize="12sp"
+        android:layout_marginBottom="4dp" />
+
+    <EditText
+        android:id="@+id/et_card_name"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:background="@drawable/bg_input_field"
+        android:hint="Nombre"
+        android:textColor="#ffffff"
+        android:textColorHint="#64748b"
+        android:paddingHorizontal="12dp"
+        android:textSize="14sp"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Límite de Crédito ($)"
+        android:textColor="#94a3b8"
+        android:textSize="12sp"
+        android:layout_marginBottom="4dp" />
+
+    <EditText
+        android:id="@+id/et_card_limit"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:background="@drawable/bg_input_field"
+        android:hint="0.00"
+        android:textColor="#ffffff"
+        android:textColorHint="#64748b"
+        android:inputType="numberDecimal"
+        android:paddingHorizontal="12dp"
+        android:textSize="14sp"
+        android:layout_marginBottom="12dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Día de Corte (1 al 31)"
+        android:textColor="#94a3b8"
+        android:textSize="12sp"
+        android:layout_marginBottom="4dp" />
+
+    <EditText
+        android:id="@+id/et_card_cutoff"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:background="@drawable/bg_input_field"
+        android:hint="15"
+        android:textColor="#ffffff"
+        android:textColorHint="#64748b"
+        android:inputType="number"
+        android:paddingHorizontal="12dp"
+        android:textSize="14sp"
+        android:layout_marginBottom="14dp" />
+
+    <!-- SELECTOR DE COLOR DINÁMICO TÁCTIL (ESTUDIO LIBRE DE COLORES) -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🎨 Diseñador de Color (Juega libremente con los sliders):"
+        android:textColor="#38bdf8"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <!-- TARJETA MINIATURA DE VISTA PREVIA EN VIVO -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/card_color_sample_card"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="3dp"
+        app:cardBackgroundColor="#0284c7"
+        android:layout_marginBottom="12dp">
+
+        <LinearLayout
+            android:id="@+id/layout_card_sample_inner"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:gravity="center_vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="💳"
+                    android:textSize="22sp" />
+
+                <TextView
+                    android:id="@+id/tv_card_sample_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Tarjeta de Muestra"
+                    android:textColor="#ffffff"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:layout_marginStart="8dp" />
+
+                <TextView
+                    android:id="@+id/tv_card_color_hex"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="#0284C7"
+                    android:textColor="#ffffff"
+                    android:textSize="14sp"
+                    android:textStyle="bold"
+                    android:background="#33000000"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="3dp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_card_color_name_hint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Vista previa en tiempo real"
+                android:textColor="#e2e8f0"
+                android:textSize="11sp"
+                android:layout_marginTop="6dp" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- SLIDER TÁCTIL 1: TONO / ARCOÍRIS (HUE 0 - 360) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="2dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🌈 Tono (Arcoíris completo):"
+            android:textColor="#cbd5e1"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_hue_degree"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="204°"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <SeekBar
+        android:id="@+id/seek_card_color_hue"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:max="360"
+        android:progress="204"
+        android:layout_marginBottom="10dp" />
+
+    <!-- SLIDER TÁCTIL 2: SATURACIÓN / INTENSIDAD (SATURATION 0 - 100) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="2dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="✨ Saturación (Pastel ➔ Vivo):"
+            android:textColor="#cbd5e1"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_sat_percent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="85%"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <SeekBar
+        android:id="@+id/seek_card_color_saturation"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:max="100"
+        android:progress="85"
+        android:layout_marginBottom="10dp" />
+
+    <!-- SLIDER TÁCTIL 3: BRILLO / LUMINOSIDAD (BRIGHTNESS 0 - 100) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="2dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="💡 Brillo (Oscuro ➔ Claro):"
+            android:textColor="#cbd5e1"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_bright_percent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="80%"
+            android:textColor="#38bdf8"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <SeekBar
+        android:id="@+id/seek_card_color_brightness"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        android:max="100"
+        android:progress="80"
+        android:layout_marginBottom="12dp" />
+
+    <!-- ENTRADA MANUAL DE HEX (OPCIONAL) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_input_field"
+        android:paddingHorizontal="12dp"
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Código Hexadecimal:"
+            android:textColor="#94a3b8"
+            android:textSize="12sp" />
+
+        <EditText
+            android:id="@+id/et_card_color_hex_input"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@android:color/transparent"
+            android:text="#0284C7"
+            android:textColor="#38bdf8"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:gravity="end|center_vertical"
+            android:textAllCaps="true"
+            android:maxLength="7" />
+    </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>
+

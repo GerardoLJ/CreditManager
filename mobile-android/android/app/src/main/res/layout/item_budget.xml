@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:cardCornerRadius="16dp"
+    app:cardBackgroundColor="#131e38"
+    app:cardElevation="2dp"
+    android:layout_marginBottom="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:id="@+id/tv_item_budget_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Presupuesto Mensual"
+                android:textColor="#ffffff"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_item_budget_total"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="$12,000.00"
+                android:textColor="#38bdf8"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_item_budget_desc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Gastos fijos del hogar y servicios"
+            android:textColor="#94a3b8"
+            android:textSize="12sp"
+            android:layout_marginBottom="10dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="12dp">
+
+            <TextView
+                android:id="@+id/tv_item_budget_fixed_var"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Fijos: $8,000.00 • Variables: $4,000.00"
+                android:textColor="#64748b"
+                android:textSize="12sp" />
+
+            <!-- PROYECCIÓN LIMPIA (SIN CAJA NI RECTÁNGULO) -->
+            <TextView
+                android:id="@+id/tv_item_budget_projected"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Proy: $13,200.00"
+                android:textColor="#f59e0b"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- ITEMS CONTAINER -->
+        <LinearLayout
+            android:id="@+id/layout_item_budget_concepts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="10dp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#1e293b"
+            android:layout_marginBottom="10dp" />
+
+        <!-- ACCIONES -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end">
+
+            <Button
+                android:id="@+id/btn_item_budget_add_item"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:text="➕ Concepto"
+                android:textColor="#38bdf8"
+                android:textSize="12sp"
+                android:background="?android:attr/selectableItemBackground"
+                android:paddingHorizontal="10dp"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_item_budget_delete"
+                android:layout_width="wrap_content"
+                android:layout_height="34dp"
+                android:text="🗑️ Eliminar"
+                android:textColor="#ef4444"
+                android:textSize="12sp"
+                android:background="?android:attr/selectableItemBackground"
+                android:paddingHorizontal="10dp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</androidx.cardview.widget.CardView>

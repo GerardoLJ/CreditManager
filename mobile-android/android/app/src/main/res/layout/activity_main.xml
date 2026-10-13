@@ -1,0 +1,465 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/drawer_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    android:background="@color/windowBackground">
+
+    <!-- CONTENIDO PRINCIPAL DE LA PANTALLA -->
+    <LinearLayout
+        android:id="@+id/layout_main_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- BARRA SUPERIOR (TOOLBAR COMPLETAMENTE INTEGRADA Y LIMPIA) -->
+        <LinearLayout
+            android:id="@+id/top_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="12dp"
+            android:background="@color/windowBackground">
+
+            <!-- BOTÓN TOGGLE HAMBURGUESA (TRANSPARENTE, SIN CAJAS NI RECTÁNGULOS) -->
+            <FrameLayout
+                android:id="@+id/btn_toggle_drawer"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true"
+                android:layout_marginEnd="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="☰"
+                    android:textColor="#ffffff"
+                    android:textSize="24sp" />
+            </FrameLayout>
+
+            <!-- TÍTULO Y SUBTÍTULO DEL MÓDULO -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tv_toolbar_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CardMaster"
+                    android:textColor="#ffffff"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_toolbar_subtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="💳 Tarjetas de Crédito"
+                    android:textColor="#38bdf8"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- BOTÓN BLOQUEAR (ESTILO PÍLDORA ELEGANTE) -->
+            <Button
+                android:id="@+id/btn_lock_app"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="🔒 Bloquear"
+                android:textColor="#cbd5e1"
+                android:textSize="12sp"
+                android:background="@drawable/bg_btn_lock"
+                android:paddingHorizontal="14dp"
+                app:backgroundTint="@null" />
+        </LinearLayout>
+
+        <!-- SEPARADOR SUTIL -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#152238" />
+
+        <!-- CONTENEDOR DINÁMICO DE MÓDULOS -->
+        <FrameLayout
+            android:id="@+id/container_body"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+    </LinearLayout>
+
+    <!-- MENÚ LATERAL (SIDEBAR DRAWER LIMPIO CON ESPACIO CÓMODO) -->
+    <LinearLayout
+        android:id="@+id/layout_sidebar_drawer"
+        android:layout_width="340dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:orientation="vertical"
+        android:background="#0b1329"
+        android:clickable="true"
+        android:focusable="true">
+
+        <!-- HEADER DEL SIDEBAR (COMPLETAMENTE CENTRADO Y EQUILIBRADO) -->
+        <LinearLayout
+            android:id="@+id/sidebar_header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="24dp"
+            android:paddingTop="32dp"
+            android:paddingBottom="20dp"
+            android:gravity="center_horizontal"
+            android:background="#0b1329">
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
+
+                <!-- ICONO CENTRADO PERFECTAMENTE -->
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:text="💳"
+                    android:textSize="32sp" />
+
+                <!-- BOTÓN CERRAR EN LA ESQUINA DERECHA -->
+                <FrameLayout
+                    android:id="@+id/btn_close_drawer"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="end|center_vertical"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:text="✕"
+                        android:textColor="#94a3b8"
+                        android:textSize="20sp" />
+                </FrameLayout>
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text="CardMaster"
+                android:textColor="#ffffff"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text="Bóveda Local • 100% Offline"
+                android:textColor="#4ade80"
+                android:textSize="12sp"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
+        <!-- LÍNEA DIVISORIA SUTIL -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#152238"
+            android:layout_marginStart="24dp"
+            android:layout_marginEnd="24dp" />
+
+        <!-- ITEMS DEL MENÚ CENTRADOS -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:paddingVertical="14dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center_horizontal">
+
+                <!-- ITEM 0: TARJETAS -->
+                <LinearLayout
+                    android:id="@+id/menu_item_cards"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginEnd="14dp"
+                    android:background="@drawable/bg_sidebar_item_selected"
+                    android:layout_marginBottom="6dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="💳"
+                        android:textSize="20sp"
+                        android:layout_marginEnd="12dp" />
+
+                    <TextView
+                        android:id="@+id/tv_menu_cards"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Tarjetas de Crédito"
+                        android:textColor="#ffffff"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <!-- ITEM 1: GASTOS -->
+                <LinearLayout
+                    android:id="@+id/menu_item_movements"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginEnd="14dp"
+                    android:background="@drawable/bg_sidebar_item_normal"
+                    android:layout_marginBottom="6dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="💸"
+                        android:textSize="20sp"
+                        android:layout_marginEnd="12dp" />
+
+                    <TextView
+                        android:id="@+id/tv_menu_movements"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Historial de Gastos"
+                        android:textColor="#cbd5e1"
+                        android:textSize="15sp" />
+                </LinearLayout>
+
+                <!-- ITEM 2: APARTADOS -->
+                <LinearLayout
+                    android:id="@+id/menu_item_set_asides"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginEnd="14dp"
+                    android:background="@drawable/bg_sidebar_item_normal"
+                    android:layout_marginBottom="6dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="💰"
+                        android:textSize="20sp"
+                        android:layout_marginEnd="12dp" />
+
+                    <TextView
+                        android:id="@+id/tv_menu_set_asides"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Fondos Apartados"
+                        android:textColor="#cbd5e1"
+                        android:textSize="15sp" />
+                </LinearLayout>
+
+                <!-- ITEM 3: CALENDARIO -->
+                <LinearLayout
+                    android:id="@+id/menu_item_calendar"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginEnd="14dp"
+                    android:background="@drawable/bg_sidebar_item_normal"
+                    android:layout_marginBottom="6dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📅"
+                        android:textSize="20sp"
+                        android:layout_marginEnd="12dp" />
+
+                    <TextView
+                        android:id="@+id/tv_menu_calendar"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Calendario de Pagos"
+                        android:textColor="#cbd5e1"
+                        android:textSize="15sp" />
+                </LinearLayout>
+
+                <!-- ITEM 4: DEUDORES -->
+                <LinearLayout
+                    android:id="@+id/menu_item_debtors"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginEnd="14dp"
+                    android:background="@drawable/bg_sidebar_item_normal"
+                    android:layout_marginBottom="6dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="👥"
+                        android:textSize="20sp"
+                        android:layout_marginEnd="12dp" />
+
+                    <TextView
+                        android:id="@+id/tv_menu_debtors"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Deudores y Personas"
+                        android:textColor="#cbd5e1"
+                        android:textSize="15sp" />
+                </LinearLayout>
+
+                <!-- ITEM 5: PRESUPUESTOS -->
+                <LinearLayout
+                    android:id="@+id/menu_item_budgets"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginEnd="14dp"
+                    android:background="@drawable/bg_sidebar_item_normal"
+                    android:layout_marginBottom="6dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📊"
+                        android:textSize="20sp"
+                        android:layout_marginEnd="12dp" />
+
+                    <TextView
+                        android:id="@+id/tv_menu_budgets"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Presupuestos e Inflación"
+                        android:textColor="#cbd5e1"
+                        android:textSize="15sp" />
+                </LinearLayout>
+
+                <!-- ITEM 6: AJUSTES -->
+                <LinearLayout
+                    android:id="@+id/menu_item_settings"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:layout_marginStart="14dp"
+                    android:layout_marginEnd="14dp"
+                    android:background="@drawable/bg_sidebar_item_normal"
+                    android:layout_marginBottom="6dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⚙️"
+                        android:textSize="20sp"
+                        android:layout_marginEnd="12dp" />
+
+                    <TextView
+                        android:id="@+id/tv_menu_settings"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Ajustes y Respaldos"
+                        android:textColor="#cbd5e1"
+                        android:textSize="15sp" />
+                </LinearLayout>
+
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- FOOTER DEL SIDEBAR -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#152238" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="24dp"
+            android:paddingVertical="18dp"
+            android:gravity="center_horizontal"
+            android:background="#0b1329">
+
+            <Button
+                android:id="@+id/btn_sidebar_lock"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:text="🔒 Bloquear Bóveda"
+                android:textColor="#cbd5e1"
+                android:textSize="13sp"
+                android:background="@drawable/bg_btn_lock"
+                android:layout_marginBottom="8dp"
+                app:backgroundTint="@null" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Base de datos privada e inamovible"
+                android:textColor="#64748b"
+                android:textSize="11sp"
+                android:layout_gravity="center_horizontal" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.drawerlayout.widget.DrawerLayout>
