@@ -1221,6 +1221,7 @@
       const movId = path.split('/')[3];
       const existing = await dbInstance.get('movements', movId);
       if (existing) {
+        const now = Date.now();
         const updated = {
           ...existing,
           concept: body.concept,
@@ -1229,9 +1230,21 @@
           card_id: body.card_id,
           person_id: body.person_id,
           sub_person_id: body.sub_person_id !== undefined ? body.sub_person_id : (existing.sub_person_id || null),
-          updated_at: Date.now()
+          updated_at: now
         };
         await dbInstance.put('movements', updated);
+        // Sincronizar apartados directos si existen
+        try {
+          const asides = await dbInstance.getAll('set_asides');
+          for (const s of asides) {
+            if (String(s.movement_id) === String(movId)) {
+              s.card_id = updated.card_id;
+              s.person_id = updated.person_id;
+              s.updated_at = now;
+              await dbInstance.put('set_asides', s);
+            }
+          }
+        } catch (e) {}
         return { success: true, changes: 1 };
       }
       return { status: 404, error: 'Movimiento no encontrado' };
@@ -1241,6 +1254,7 @@
       const movId = path.split('/')[3];
       const existing = await dbInstance.get('movements', movId);
       if (existing) {
+        const now = Date.now();
         const updated = {
           ...existing,
           concept: body.concept,
@@ -1249,9 +1263,20 @@
           card_id: body.card_id,
           person_id: body.person_id,
           sub_person_id: body.sub_person_id !== undefined ? body.sub_person_id : (existing.sub_person_id || null),
-          updated_at: Date.now()
+          updated_at: now
         };
         await dbInstance.put('movements', updated);
+        try {
+          const asides = await dbInstance.getAll('set_asides');
+          for (const s of asides) {
+            if (String(s.movement_id) === String(movId)) {
+              s.card_id = updated.card_id;
+              s.person_id = updated.person_id;
+              s.updated_at = now;
+              await dbInstance.put('set_asides', s);
+            }
+          }
+        } catch (e) {}
         return { success: true, changes: 1 };
       }
       return { status: 404, error: 'Movimiento no encontrado' };

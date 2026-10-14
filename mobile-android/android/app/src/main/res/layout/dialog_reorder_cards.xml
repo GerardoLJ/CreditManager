@@ -19,24 +19,17 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Usa los botones ⬆️ y ⬇️ para mover las tarjetas al orden que prefieras. Los cambios se aplicarán inmediatamente:"
+        android:text="Mantén presionado el icono ☰ y desliza tu dedo hacia arriba o abajo para acomodar las tarjetas en el orden que prefieras:"
         android:textColor="#94a3b8"
         android:textSize="13sp"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginBottom="14dp" />
 
-    <ScrollView
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_reorder_cards"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:maxHeight="380dp"
-        android:fillViewport="true">
-
-        <LinearLayout
-            android:id="@+id/layout_reorder_cards_list"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-    </ScrollView>
+        android:layout_height="320dp"
+        android:nestedScrollingEnabled="true"
+        android:overScrollMode="never" />
 
     <Button
         android:id="@+id/btn_dialog_reorder_done"

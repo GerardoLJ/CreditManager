@@ -28,6 +28,7 @@ import java.util.Collections;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
@@ -35,6 +36,11 @@ import androidx.core.view.GravityCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.recyclerview.widget.ItemTouchHelper;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import android.view.MotionEvent;
+import android.view.ViewGroup;
 
 import com.cardmaster.finance.db.CardMasterDbHelper;
 import com.cardmaster.finance.model.Budget;
@@ -459,71 +465,129 @@ public class MainActivity extends AppCompatActivity {
         if (cards == null || cards.size() <= 1) return;
 
         View dView = LayoutInflater.from(this).inflate(R.layout.dialog_reorder_cards, null);
-        LinearLayout listLayout = dView.findViewById(R.id.layout_reorder_cards_list);
+        RecyclerView rvCards = dView.findViewById(R.id.rv_reorder_cards);
         Button btnDone = dView.findViewById(R.id.btn_dialog_reorder_done);
+
+        rvCards.setLayoutManager(new LinearLayoutManager(this));
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setView(dView)
                 .create();
 
-        Runnable[] populateRef = new Runnable[1];
-        populateRef[0] = new Runnable() {
+        final ItemTouchHelper[] touchHelperRef = new ItemTouchHelper[1];
+
+        class ReorderHolder extends RecyclerView.ViewHolder {
+            TextView tvNum;
+            View colorDot;
+            TextView tvName;
+            TextView dragHandle;
+
+            ReorderHolder(View v) {
+                super(v);
+                tvNum = v.findViewById(R.id.tv_reorder_num);
+                colorDot = v.findViewById(R.id.view_reorder_color);
+                tvName = v.findViewById(R.id.tv_reorder_name);
+                dragHandle = v.findViewById(R.id.tv_reorder_drag_handle);
+            }
+        }
+
+        class ReorderAdapter extends RecyclerView.Adapter<ReorderHolder> {
+            @NonNull
             @Override
-            public void run() {
-                listLayout.removeAllViews();
-                LayoutInflater inflater = LayoutInflater.from(MainActivity.this);
+            public ReorderHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+                View v = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_reorder_card, parent, false);
+                return new ReorderHolder(v);
+            }
 
-                for (int i = 0; i < cards.size(); i++) {
-                    final int idx = i;
-                    Card c = cards.get(i);
-                    View row = inflater.inflate(R.layout.item_reorder_card, listLayout, false);
+            @Override
+            public void onBindViewHolder(@NonNull ReorderHolder holder, int position) {
+                Card c = cards.get(position);
+                holder.tvNum.setText((position + 1) + ".");
+                holder.tvName.setText(c.getName());
 
-                    TextView tvNum = row.findViewById(R.id.tv_reorder_num);
-                    View colorDot = row.findViewById(R.id.view_reorder_color);
-                    TextView tvName = row.findViewById(R.id.tv_reorder_name);
-                    Button btnUp = row.findViewById(R.id.btn_reorder_up);
-                    Button btnDown = row.findViewById(R.id.btn_reorder_down);
-
-                    tvNum.setText((i + 1) + ".");
-                    tvName.setText(c.getName());
-
-                    if (c.getColor() != null && !c.getColor().isEmpty() && colorDot != null) {
-                        try {
-                            android.graphics.drawable.GradientDrawable dot = new android.graphics.drawable.GradientDrawable();
-                            dot.setShape(android.graphics.drawable.GradientDrawable.OVAL);
-                            dot.setColor(Color.parseColor(c.getColor()));
-                            colorDot.setBackground(dot);
-                        } catch (Exception ignored) {}
-                    }
-
-                    btnUp.setEnabled(idx > 0);
-                    btnUp.setAlpha(idx > 0 ? 1.0f : 0.35f);
-                    btnUp.setOnClickListener(v -> {
-                        if (idx > 0) {
-                            Collections.swap(cards, idx, idx - 1);
-                            dbHelper.updateCardOrder(cards);
-                            populateRef[0].run();
-                            selectTab(0);
-                        }
-                    });
-
-                    btnDown.setEnabled(idx < cards.size() - 1);
-                    btnDown.setAlpha(idx < cards.size() - 1 ? 1.0f : 0.35f);
-                    btnDown.setOnClickListener(v -> {
-                        if (idx < cards.size() - 1) {
-                            Collections.swap(cards, idx, idx + 1);
-                            dbHelper.updateCardOrder(cards);
-                            populateRef[0].run();
-                            selectTab(0);
-                        }
-                    });
-
-                    listLayout.addView(row);
+                if (c.getColor() != null && !c.getColor().isEmpty() && holder.colorDot != null) {
+                    try {
+                        GradientDrawable dot = new GradientDrawable();
+                        dot.setShape(GradientDrawable.OVAL);
+                        dot.setColor(Color.parseColor(c.getColor()));
+                        holder.colorDot.setBackground(dot);
+                    } catch (Exception ignored) {}
                 }
+
+                // Al tocar y presionar el toggle handle ☰, inicia el deslizamiento/arrastre de inmediato
+                holder.dragHandle.setOnTouchListener((v, event) -> {
+                    if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                        if (touchHelperRef[0] != null) {
+                            touchHelperRef[0].startDrag(holder);
+                        }
+                    }
+                    return false;
+                });
+
+                // También al dejar presionada la fila entera
+                holder.itemView.setOnLongClickListener(v -> {
+                    if (touchHelperRef[0] != null) {
+                        touchHelperRef[0].startDrag(holder);
+                        return true;
+                    }
+                    return false;
+                });
+            }
+
+            @Override
+            public int getItemCount() {
+                return cards.size();
+            }
+
+            public void onItemMove(int fromPosition, int toPosition) {
+                Collections.swap(cards, fromPosition, toPosition);
+                notifyItemMoved(fromPosition, toPosition);
+                notifyItemChanged(fromPosition);
+                notifyItemChanged(toPosition);
+            }
+        }
+
+        ReorderAdapter adapter = new ReorderAdapter();
+        rvCards.setAdapter(adapter);
+
+        ItemTouchHelper.SimpleCallback callback = new ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0) {
+            @Override
+            public boolean onMove(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder, @NonNull RecyclerView.ViewHolder target) {
+                int from = viewHolder.getBindingAdapterPosition();
+                if (from == RecyclerView.NO_POSITION) from = viewHolder.getAdapterPosition();
+                int to = target.getBindingAdapterPosition();
+                if (to == RecyclerView.NO_POSITION) to = target.getAdapterPosition();
+                adapter.onItemMove(from, to);
+                return true;
+            }
+
+            @Override
+            public void onSwiped(@NonNull RecyclerView.ViewHolder viewHolder, int direction) {}
+
+            @Override
+            public void onSelectedChanged(RecyclerView.ViewHolder viewHolder, int actionState) {
+                super.onSelectedChanged(viewHolder, actionState);
+                if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
+                    viewHolder.itemView.setAlpha(0.7f);
+                    viewHolder.itemView.setScaleX(1.03f);
+                    viewHolder.itemView.setScaleY(1.03f);
+                }
+            }
+
+            @Override
+            public void clearView(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder viewHolder) {
+                super.clearView(recyclerView, viewHolder);
+                viewHolder.itemView.setAlpha(1.0f);
+                viewHolder.itemView.setScaleX(1.0f);
+                viewHolder.itemView.setScaleY(1.0f);
+                dbHelper.updateCardOrder(cards);
+                adapter.notifyDataSetChanged();
+                selectTab(0);
             }
         };
 
-        populateRef[0].run();
+        touchHelperRef[0] = new ItemTouchHelper(callback);
+        touchHelperRef[0].attachToRecyclerView(rvCards);
 
         btnDone.setOnClickListener(v -> {
             dialog.dismiss();
@@ -964,6 +1028,7 @@ public class MainActivity extends AppCompatActivity {
                 TextView tvCard = item.findViewById(R.id.tv_item_mov_card);
                 TextView tvPerson = item.findViewById(R.id.tv_item_mov_person);
                 TextView tvAmount = item.findViewById(R.id.tv_item_mov_amount);
+                Button btnEdit = item.findViewById(R.id.btn_item_mov_edit);
                 Button btnDelete = item.findViewById(R.id.btn_item_mov_delete);
 
                 tvConcept.setText(m.getConcept());
@@ -975,6 +1040,11 @@ public class MainActivity extends AppCompatActivity {
                     tvPerson.setText(m.getPersonName());
                 }
                 tvAmount.setText("-" + formatCurrency(m.getAmount()));
+
+                if (btnEdit != null) {
+                    btnEdit.setOnClickListener(v -> showMovementDialog(m));
+                }
+                item.setOnClickListener(v -> showMovementDialog(m));
 
                 btnDelete.setOnClickListener(v -> {
                     new AlertDialog.Builder(this)
@@ -995,6 +1065,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showMovementDialog() {
+        showMovementDialog(null);
+    }
+
+    private void showMovementDialog(Movement existingMovement) {
         List<Card> cards = dbHelper.getAllCards();
         if (cards.isEmpty()) {
             Toast.makeText(this, "Primero registra al menos una tarjeta de crédito.", Toast.LENGTH_LONG).show();
@@ -1003,6 +1077,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         View dView = LayoutInflater.from(this).inflate(R.layout.dialog_movement, null);
+        TextView tvTitle = dView.findViewById(R.id.tv_dialog_mov_title);
         EditText etConcept = dView.findViewById(R.id.et_mov_concept);
         EditText etAmount = dView.findViewById(R.id.et_mov_amount);
         EditText etDate = dView.findViewById(R.id.et_mov_date);
@@ -1014,17 +1089,44 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout layoutMsi = dView.findViewById(R.id.layout_mov_msi_months);
         Spinner spMonths = dView.findViewById(R.id.spinner_mov_msi_months);
 
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
-        etDate.setText(sdf.format(new Date()));
+        boolean isEdit = existingMovement != null;
+        if (tvTitle != null) {
+            tvTitle.setText(isEdit ? "Editar Gasto" : "Registrar Nuevo Gasto");
+        }
+
+        if (isEdit) {
+            etConcept.setText(existingMovement.getConcept());
+            etAmount.setText(String.format(Locale.US, "%.2f", existingMovement.getAmount()));
+            etDate.setText(existingMovement.getDate());
+            cbMsi.setVisibility(View.GONE);
+            layoutMsi.setVisibility(View.GONE);
+        } else {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+            etDate.setText(sdf.format(new Date()));
+        }
 
         List<String> cardNames = new ArrayList<>();
-        for (Card c : cards) cardNames.add(c.getName());
+        int initialCardIdx = 0;
+        for (int i = 0; i < cards.size(); i++) {
+            cardNames.add(cards.get(i).getName());
+            if (isEdit && cards.get(i).getId().equals(existingMovement.getCardId())) {
+                initialCardIdx = i;
+            }
+        }
         spCard.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, cardNames));
+        spCard.setSelection(initialCardIdx);
 
         List<Person> people = dbHelper.getAllPeople();
         List<String> personNames = new ArrayList<>();
-        for (Person p : people) personNames.add(p.getName());
+        int initialPersonIdx = 0;
+        for (int i = 0; i < people.size(); i++) {
+            personNames.add(people.get(i).getName());
+            if (isEdit && people.get(i).getId().equals(existingMovement.getPersonId())) {
+                initialPersonIdx = i;
+            }
+        }
         spPerson.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, personNames));
+        spPerson.setSelection(initialPersonIdx);
 
         List<Person> currentSubPeople = new ArrayList<>();
         List<String> subLabels = new ArrayList<>();
@@ -1040,13 +1142,21 @@ public class MainActivity extends AppCompatActivity {
 
                     subLabels.clear();
                     subLabels.add("-- General (Sin subetiqueta) --");
-                    for (Person sub : currentSubPeople) {
+                    int initialSubIdx = 0;
+                    for (int i = 0; i < currentSubPeople.size(); i++) {
+                        Person sub = currentSubPeople.get(i);
                         subLabels.add("🏷️ " + sub.getName());
+                        if (isEdit && sub.getId().equals(existingMovement.getSubPersonId())) {
+                            initialSubIdx = i + 1;
+                        }
                     }
                     subLabels.add("➕ Nuevo subdeudor / subetiqueta...");
 
                     ArrayAdapter<String> subAdapter = new ArrayAdapter<>(MainActivity.this, android.R.layout.simple_spinner_dropdown_item, subLabels);
                     spSubperson.setAdapter(subAdapter);
+                    if (initialSubIdx > 0 && initialSubIdx < subLabels.size() - 1) {
+                        spSubperson.setSelection(initialSubIdx);
+                    }
                     if (layoutSubperson != null) layoutSubperson.setVisibility(View.VISIBLE);
                 } else {
                     if (layoutSubperson != null) layoutSubperson.setVisibility(View.GONE);
@@ -1093,7 +1203,7 @@ public class MainActivity extends AppCompatActivity {
 
         new AlertDialog.Builder(this)
                 .setView(dView)
-                .setPositiveButton("Guardar", (dialog, which) -> {
+                .setPositiveButton(isEdit ? "Guardar Cambios" : "Guardar", (dialog, which) -> {
                     String concept = etConcept.getText().toString().trim();
                     String amtStr = etAmount.getText().toString().trim();
                     String date = etDate.getText().toString().trim();
@@ -1119,7 +1229,16 @@ public class MainActivity extends AppCompatActivity {
                         subPersonId = currentSubPeople.get(subIdx - 1).getId();
                     }
 
-                    if (cbMsi.isChecked()) {
+                    if (isEdit) {
+                        existingMovement.setConcept(concept);
+                        existingMovement.setAmount(amount);
+                        existingMovement.setDate(date);
+                        existingMovement.setCardId(cardId);
+                        existingMovement.setPersonId(personId);
+                        existingMovement.setSubPersonId(subPersonId);
+                        dbHelper.updateMovement(existingMovement);
+                        Toast.makeText(this, "Gasto actualizado exitosamente.", Toast.LENGTH_SHORT).show();
+                    } else if (cbMsi.isChecked()) {
                         int months = msiVals[spMonths.getSelectedItemPosition()];
                         InstallmentPlan plan = new InstallmentPlan(null, concept, amount, months, date, cardId, personId, 0, System.currentTimeMillis());
                         dbHelper.insertInstallmentPlan(plan);
@@ -1130,7 +1249,7 @@ public class MainActivity extends AppCompatActivity {
                         Toast.makeText(this, "Gasto registrado exitosamente.", Toast.LENGTH_SHORT).show();
                     }
 
-                    selectTab(1);
+                    selectTab(currentTab);
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
@@ -1585,6 +1704,7 @@ public class MainActivity extends AppCompatActivity {
                         TextView tvConcept = movView.findViewById(R.id.tv_pending_mov_concept);
                         TextView tvDetails = movView.findViewById(R.id.tv_pending_mov_details);
                         TextView tvAmounts = movView.findViewById(R.id.tv_pending_mov_amounts);
+                        Button btnEditMov = movView.findViewById(R.id.btn_pending_mov_edit);
                         Button btnApartarMov = movView.findViewById(R.id.btn_pending_mov_apartar);
 
                         String conceptTxt = m.getConcept();
@@ -1598,6 +1718,11 @@ public class MainActivity extends AppCompatActivity {
                         } else {
                             tvAmounts.setText("Total: " + formatCurrency(m.getAmount()) + " • Falta apartar: " + formatCurrency(m.getPendingAmount()));
                         }
+
+                        if (btnEditMov != null) {
+                            btnEditMov.setOnClickListener(v -> showMovementDialog(m));
+                        }
+                        tvConcept.setOnClickListener(v -> showMovementDialog(m));
 
                         btnApartarMov.setOnClickListener(v -> showApartarMovementDialog(m, p));
                         layoutPendingList.addView(movView);

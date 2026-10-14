@@ -814,23 +814,76 @@ function saveCardsOrder() {
 
 let cachedCardsList = [];
 
-function openReorderCardsModal() {
-  const container = document.getElementById('cards-grid');
-  if (!container) return;
-  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
-  if (cardEls.length <= 1) {
-    showToast("Registra al menos 2 tarjetas para poder organizarlas", "info");
-    return;
-  }
-  const titleEl = document.getElementById('modal-move-card-title');
-  if (titleEl) titleEl.textContent = '⇅ Organizar Tarjetas';
-  renderReorderCardsList();
-  const modal = document.getElementById('modal-move-card');
-  if (modal) modal.classList.remove('hidden');
+let activeTouchRow = null;
+
+function updateModalRowNumbers() {
+  const listEl = document.getElementById('move-card-positions-list');
+  if (!listEl) return;
+  const rows = listEl.querySelectorAll('.reorder-card-row');
+  rows.forEach((r, idx) => {
+    const numEl = r.querySelector('.reorder-row-num');
+    if (numEl) numEl.textContent = `#${idx + 1}`;
+  });
 }
 
-function openMoveCardModal(cardId) {
-  openReorderCardsModal();
+function saveCardsOrderFromModal() {
+  const listEl = document.getElementById('move-card-positions-list');
+  const container = document.getElementById('cards-grid');
+  if (!listEl || !container) return;
+
+  const rows = Array.from(listEl.querySelectorAll('.reorder-card-row'));
+  const ids = rows.map(r => r.dataset.cardId).filter(Boolean);
+
+  localStorage.setItem('cardmaster_cards_order', JSON.stringify(ids));
+
+  ids.forEach(id => {
+    const cardEl = container.querySelector(`.credit-card-ui[data-card-id="${id}"]`);
+    if (cardEl) {
+      container.appendChild(cardEl);
+    }
+  });
+
+  updateModalRowNumbers();
+}
+
+function initReorderTouchListeners() {
+  const listEl = document.getElementById('move-card-positions-list');
+  if (!listEl || listEl._touchListenersAttached) return;
+  listEl._touchListenersAttached = true;
+
+  listEl.addEventListener('touchmove', (e) => {
+    if (!activeTouchRow) return;
+    if (e.cancelable) e.preventDefault();
+    const touch = e.touches[0];
+    const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+    const targetRow = targetEl ? targetEl.closest('.reorder-card-row') : null;
+    if (targetRow && targetRow !== activeTouchRow && targetRow.parentElement === listEl) {
+      const rect = targetRow.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (touch.clientY < midY) {
+        listEl.insertBefore(activeTouchRow, targetRow);
+      } else {
+        listEl.insertBefore(activeTouchRow, targetRow.nextSibling);
+      }
+      updateModalRowNumbers();
+    }
+  }, { passive: false });
+
+  const endTouchDrag = () => {
+    if (!activeTouchRow) return;
+    activeTouchRow.style.opacity = '';
+    activeTouchRow.style.transform = '';
+    activeTouchRow.style.boxShadow = '';
+    activeTouchRow.style.borderColor = '';
+    activeTouchRow.style.background = '';
+    activeTouchRow.style.zIndex = '';
+    activeTouchRow.style.position = '';
+    activeTouchRow = null;
+    saveCardsOrderFromModal();
+  };
+
+  listEl.addEventListener('touchend', endTouchDrag);
+  listEl.addEventListener('touchcancel', endTouchDrag);
 }
 
 function renderReorderCardsList() {
@@ -846,24 +899,97 @@ function renderReorderCardsList() {
     const c = (cachedCardsList || []).find(x => String(x.id) === String(cId));
     const name = c ? c.name : `Tarjeta #${idx + 1}`;
     const color = c ? (c.color || '#3b82f6') : '#3b82f6';
-    const isFirst = idx === 0;
-    const isLast = idx === cardEls.length - 1;
 
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--card-bg, #1e293b); border:1px solid var(--border-color, #334155); border-radius:10px; gap:10px;';
+    row.className = 'reorder-card-row';
+    row.dataset.cardId = cId;
+    row.draggable = true;
+    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:var(--card-bg, #1e293b); border:1px solid var(--border-color, #334155); border-radius:10px; gap:10px; user-select:none; cursor:grab; transition:transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;';
+    
     row.innerHTML = `
-      <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
-        <span style="font-size:0.85rem; font-weight:700; color:var(--text-muted); width:24px; text-align:center;">#${idx + 1}</span>
+      <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1; pointer-events:none;">
+        <span class="reorder-row-num" style="font-size:0.85rem; font-weight:700; color:var(--text-muted); width:24px; text-align:center;">#${idx + 1}</span>
         <div style="width:14px; height:14px; border-radius:50%; background:${color}; flex-shrink:0;"></div>
         <span style="font-weight:600; font-size:0.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(name)}</span>
       </div>
-      <div style="display:flex; gap:6px; flex-shrink:0;">
-        <button type="button" class="btn btn-sm btn-secondary" ${isFirst ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="Mover Arriba" onclick="moveCardUpInModal('${cId}')">⬆️</button>
-        <button type="button" class="btn btn-sm btn-secondary" ${isLast ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="Mover Abajo" onclick="moveCardDownInModal('${cId}')">⬇️</button>
+      <div class="reorder-drag-handle" style="font-size:1.4rem; line-height:1; padding:6px 14px; color:var(--text-muted, #94a3b8); cursor:grab; touch-action:none; display:flex; align-items:center; justify-content:center; border-radius:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08);" title="Mantén presionado y desliza">
+        ☰
       </div>
     `;
+
+    // Soporte táctil (Touch) para celulares
+    const handle = row.querySelector('.reorder-drag-handle');
+    const startDrag = (e) => {
+      activeTouchRow = row;
+      row.style.opacity = '0.85';
+      row.style.transform = 'scale(1.02)';
+      row.style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)';
+      row.style.borderColor = 'var(--primary-color, #38bdf8)';
+      row.style.background = 'rgba(56, 189, 248, 0.1)';
+      row.style.zIndex = '1000';
+      row.style.position = 'relative';
+      if (navigator.vibrate) navigator.vibrate(20);
+    };
+
+    handle.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      startDrag(e);
+    }, { passive: false });
+
+    // Soporte de arrastre de escritorio (HTML5 Drag & Drop)
+    row.addEventListener('dragstart', (e) => {
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', cId);
+      setTimeout(() => {
+        row.style.opacity = '0.5';
+      }, 0);
+    });
+
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      row.style.opacity = '';
+      saveCardsOrderFromModal();
+    });
+
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const dragging = listEl.querySelector('.reorder-card-row.dragging');
+      if (dragging && dragging !== row) {
+        const rect = row.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          listEl.insertBefore(dragging, row);
+        } else {
+          listEl.insertBefore(dragging, row.nextSibling);
+        }
+        updateModalRowNumbers();
+      }
+    });
+
     listEl.appendChild(row);
   });
+}
+
+function openReorderCardsModal() {
+  const container = document.getElementById('cards-grid');
+  if (!container) return;
+  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
+  if (cardEls.length <= 1) {
+    showToast("Registra al menos 2 tarjetas para poder organizarlas", "info");
+    return;
+  }
+  const titleEl = document.getElementById('modal-move-card-title');
+  if (titleEl) titleEl.textContent = '⇅ Organizar Tarjetas';
+  renderReorderCardsList();
+  initReorderTouchListeners();
+  const modal = document.getElementById('modal-move-card');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function openMoveCardModal(cardId) {
+  openReorderCardsModal();
 }
 
 function moveCardUpInModal(cardId) {
@@ -1932,9 +2058,12 @@ async function renderDebts() {
                     <span class="small text-muted">${m.date} | 💳 ${escapeHtml(cardName)} | Total: $${m.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}${m.total_aside > 0.001 ? ` | Apartado: $${m.total_aside.toLocaleString('es-MX', {minimumFractionDigits: 2})}` : ''}</span>
                     <span class="debt-breakdown-pending">Falta por apartar: <strong>$${m.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
                   </div>
-                  <button class="btn btn-sm btn-primary" onclick="openSetAsideModal('${m.id}', '${m.card_id}', '${p.id}', '${m.remaining}')" title="Apartar parcial o completo este gasto">
-                    💰 Apartar ($${m.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})})
-                  </button>
+                  <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+                    <button class="btn btn-sm btn-secondary" onclick="openEditMovement('${m.id}')" title="Editar Gasto">✏️</button>
+                    <button class="btn btn-sm btn-primary" onclick="openSetAsideModal('${m.id}', '${m.card_id}', '${p.id}', '${m.remaining}')" title="Apartar parcial o completo este gasto">
+                      💰 Apartar ($${m.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})})
+                    </button>
+                  </div>
                 </li>
               `;
             }).join('')}

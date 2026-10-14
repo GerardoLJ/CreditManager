@@ -35,24 +35,19 @@
         android:ellipsize="end"
         android:maxLines="1" />
 
-    <Button
-        android:id="@+id/btn_reorder_up"
-        android:layout_width="38dp"
-        android:layout_height="36dp"
-        android:text="⬆️"
-        android:textSize="13sp"
-        android:textColor="#ffffff"
-        android:background="@drawable/bg_sidebar_item_normal"
-        android:layout_marginEnd="6dp" />
-
-    <Button
-        android:id="@+id/btn_reorder_down"
-        android:layout_width="38dp"
-        android:layout_height="36dp"
-        android:text="⬇️"
-        android:textSize="13sp"
-        android:textColor="#ffffff"
-        android:background="@drawable/bg_sidebar_item_normal" />
+    <!-- TOGGLE / DRAG HANDLE DESLIZABLE -->
+    <TextView
+        android:id="@+id/tv_reorder_drag_handle"
+        android:layout_width="48dp"
+        android:layout_height="40dp"
+        android:gravity="center"
+        android:text="☰"
+        android:textColor="#38bdf8"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Mantén presionado y desliza"
+        android:paddingHorizontal="8dp" />
 
 </LinearLayout>
 

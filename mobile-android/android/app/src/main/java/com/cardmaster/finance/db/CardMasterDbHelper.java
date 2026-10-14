@@ -706,6 +706,34 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
         return res != -1;
     }
 
+    public boolean updateMovement(Movement mov) {
+        if (mov == null || mov.getId() == null) return false;
+        mov.setUpdatedAt(System.currentTimeMillis());
+
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("concept", mov.getConcept());
+        cv.put("amount", mov.getAmount());
+        cv.put("date", mov.getDate());
+        cv.put("card_id", mov.getCardId());
+        cv.put("person_id", mov.getPersonId());
+        cv.put("sub_person_id", mov.getSubPersonId());
+        cv.put("updated_at", mov.getUpdatedAt());
+
+        int count = db.update("movements", cv, "id = ?", new String[]{mov.getId()});
+
+        // Sincronizar tarjeta y persona en los apartados que apunten a este movimiento
+        try {
+            ContentValues cvSa = new ContentValues();
+            cvSa.put("card_id", mov.getCardId());
+            cvSa.put("person_id", mov.getPersonId());
+            cvSa.put("updated_at", mov.getUpdatedAt());
+            db.update("set_asides", cvSa, "movement_id = ?", new String[]{mov.getId()});
+        } catch (Exception ignored) {}
+
+        return count > 0;
+    }
+
     public boolean deleteMovement(String id) {
         SQLiteDatabase db = getWritableDatabase();
         int count = db.delete("movements", "id = ?", new String[]{id});

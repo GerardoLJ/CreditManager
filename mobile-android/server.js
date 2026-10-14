@@ -395,29 +395,39 @@ app.post('/api/movements', (req, res) => {
 app.put('/api/movements/:id', (req, res) => {
   const { concept, amount, date, card_id, person_id, sub_person_id } = req.body;
   const now = Date.now();
-  db.run(`UPDATE movements 
-          SET concept = ?, amount = ?, date = ?, card_id = ?, person_id = ?, sub_person_id = ?, updated_at = ?
-          WHERE id = ?`,
-    [concept, amount, date, card_id, person_id, sub_person_id || null, now, req.params.id],
-    function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true, changes: this.changes });
-    }
-  );
+  db.serialize(() => {
+    db.run(`UPDATE movements 
+            SET concept = ?, amount = ?, date = ?, card_id = ?, person_id = ?, sub_person_id = ?, updated_at = ?
+            WHERE id = ?`,
+      [concept, amount, date, card_id, person_id, sub_person_id || null, now, req.params.id]
+    );
+    db.run(`UPDATE set_asides SET card_id = ?, person_id = ?, updated_at = ? WHERE movement_id = ?`,
+      [card_id, person_id, now, req.params.id],
+      function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+      }
+    );
+  });
 });
 
 app.post('/api/movements/:id/update', (req, res) => {
   const { concept, amount, date, card_id, person_id, sub_person_id } = req.body;
   const now = Date.now();
-  db.run(`UPDATE movements 
-          SET concept = ?, amount = ?, date = ?, card_id = ?, person_id = ?, sub_person_id = ?, updated_at = ?
-          WHERE id = ?`,
-    [concept, amount, date, card_id, person_id, sub_person_id || null, now, req.params.id],
-    function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ success: true, changes: this.changes });
-    }
-  );
+  db.serialize(() => {
+    db.run(`UPDATE movements 
+            SET concept = ?, amount = ?, date = ?, card_id = ?, person_id = ?, sub_person_id = ?, updated_at = ?
+            WHERE id = ?`,
+      [concept, amount, date, card_id, person_id, sub_person_id || null, now, req.params.id]
+    );
+    db.run(`UPDATE set_asides SET card_id = ?, person_id = ?, updated_at = ? WHERE movement_id = ?`,
+      [card_id, person_id, now, req.params.id],
+      function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+      }
+    );
+  });
 });
 
 app.delete('/api/movements/:id', (req, res) => {
