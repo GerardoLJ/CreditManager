@@ -628,17 +628,17 @@
   <div id="modal-move-card" class="modal hidden">
     <div class="modal-content" style="max-width:440px;">
       <div class="modal-header">
-        <h3 id="modal-move-card-title">⇅ Mover Tarjeta</h3>
+        <h3 id="modal-move-card-title">⇅ Organizar Tarjetas</h3>
         <button type="button" class="modal-close" data-close="modal-move-card">&times;</button>
       </div>
       <div class="modal-body">
-        <p class="text-muted small" style="margin-bottom:12px;">Selecciona la posición exacta a la que deseas mover esta tarjeta:</p>
+        <p class="text-muted small" style="margin-bottom:12px;">Usa los botones ⬆️ y ⬇️ para mover y acomodar tus tarjetas en el orden que prefieras:</p>
         <div id="move-card-positions-list" style="display:flex; flex-direction:column; gap:8px;">
           <!-- Generado dinámicamente -->
         </div>
       </div>
       <div class="modal-footer" style="margin-top:16px;">
-        <button type="button" class="btn btn-secondary" data-close="modal-move-card">Cancelar</button>
+        <button type="button" class="btn btn-primary" data-close="modal-move-card">Listo</button>
       </div>
     </div>
   </div>
@@ -675,6 +675,12 @@
             <label for="mov-person">Persona Responsable:</label>
             <select id="mov-person" class="form-control" required></select>
           </div>
+        </div>
+        <div class="form-group" id="mov-subperson-container">
+          <label for="mov-subperson">🏷️ Subdeudor / Subetiqueta (Opcional):</label>
+          <select id="mov-subperson" class="form-control">
+            <option value="">-- General (Sin subetiqueta) --</option>
+          </select>
         </div>
         <div id="mov-msi-container" class="form-group checkbox-wrap">
           <label class="switch-label">

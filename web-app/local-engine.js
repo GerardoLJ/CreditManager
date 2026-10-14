@@ -1067,11 +1067,12 @@
       if (method === 'POST') {
         const people = await dbInstance.getAll('people');
         const nameTrimmed = (body.name || '').trim();
-        if (people.some(p => p.name.toLowerCase() === nameTrimmed.toLowerCase())) {
-          return { status: 400, error: 'Ya existe esa persona' };
+        const parentId = body.parent_id || null;
+        if (people.some(p => p.name.toLowerCase() === nameTrimmed.toLowerCase() && (p.parent_id || null) === parentId)) {
+          return { status: 400, error: 'Ya existe esa persona o subetiqueta' };
         }
         const id = getUUID();
-        await dbInstance.put('people', { id, name: nameTrimmed, updated_at: Date.now() });
+        await dbInstance.put('people', { id, name: nameTrimmed, parent_id: parentId, updated_at: Date.now() });
         return { success: true, id };
       }
     }
@@ -1082,11 +1083,19 @@
         const existing = await dbInstance.get('people', pId);
         if (existing) {
           existing.name = (body.name || existing.name).trim();
+          if (body.parent_id !== undefined) existing.parent_id = body.parent_id || null;
           existing.updated_at = Date.now();
           await dbInstance.put('people', existing);
           return { success: true, id: pId };
         }
         return { status: 404, error: 'Persona no encontrada' };
+      }
+      // Eliminar también subpersonas si las tiene
+      const allPeople = await dbInstance.getAll('people');
+      for (const p of allPeople) {
+        if (p.parent_id === pId) {
+          await dbInstance.delete('people', p.id);
+        }
       }
       await dbInstance.delete('people', pId);
       return { success: true };
@@ -1160,8 +1169,10 @@
 
           return {
             ...m,
+            sub_person_id: m.sub_person_id || null,
             card_name: cardsMap[m.card_id] || 'Desconocida',
             person_name: peopleMap[m.person_id] || 'Desconocido',
+            sub_person_name: m.sub_person_id ? (peopleMap[m.sub_person_id] || '') : '',
             total_set_aside: totalSetAside,
             total_paid: totalPaid,
             status
@@ -1183,6 +1194,7 @@
             start_date: body.date,
             card_id: body.card_id,
             person_id: body.person_id,
+            sub_person_id: body.sub_person_id || null,
             paid_months: 0,
             updated_at: now
           });
@@ -1196,6 +1208,7 @@
             date: body.date,
             card_id: body.card_id,
             person_id: body.person_id,
+            sub_person_id: body.sub_person_id || null,
             is_set_aside: 0,
             updated_at: now
           });
@@ -1215,6 +1228,7 @@
           date: body.date,
           card_id: body.card_id,
           person_id: body.person_id,
+          sub_person_id: body.sub_person_id !== undefined ? body.sub_person_id : (existing.sub_person_id || null),
           updated_at: Date.now()
         };
         await dbInstance.put('movements', updated);
@@ -1234,6 +1248,7 @@
           date: body.date,
           card_id: body.card_id,
           person_id: body.person_id,
+          sub_person_id: body.sub_person_id !== undefined ? body.sub_person_id : (existing.sub_person_id || null),
           updated_at: Date.now()
         };
         await dbInstance.put('movements', updated);

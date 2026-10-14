@@ -80,6 +80,9 @@ function initDbSchema() {
     db.run("ALTER TABLE set_asides ADD COLUMN is_paid INTEGER DEFAULT 0", (err) => {});
     db.run("ALTER TABLE set_asides ADD COLUMN paid_amount REAL DEFAULT 0", (err) => {});
     db.run("ALTER TABLE set_asides ADD COLUMN status TEXT DEFAULT 'apartado'", (err) => {});
+    db.run("ALTER TABLE people ADD COLUMN parent_id TEXT", (err) => {});
+    db.run("ALTER TABLE movements ADD COLUMN sub_person_id TEXT", (err) => {});
+    db.run("ALTER TABLE installment_plans ADD COLUMN sub_person_id TEXT", (err) => {});
 
     db.run(`CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)`);
 
@@ -280,21 +283,29 @@ app.get('/api/people', (req, res) => {
 
 app.post('/api/people', (req, res) => {
   const id = crypto.randomUUID();
-  db.run("INSERT INTO people (id, name, updated_at) VALUES (?, ?, ?)", [id, req.body.name.trim(), Date.now()], (err) => {
-    if (err) return res.status(400).json({ error: 'Ya existe esa persona' });
+  const parentId = req.body.parent_id || null;
+  db.run("INSERT INTO people (id, name, parent_id, updated_at) VALUES (?, ?, ?, ?)", [id, req.body.name.trim(), parentId, Date.now()], (err) => {
+    if (err) return res.status(400).json({ error: 'Ya existe esa persona o subetiqueta' });
     res.json({ success: true, id });
   });
 });
 
 app.delete('/api/people/:id', (req, res) => {
-  db.run("DELETE FROM people WHERE id = ?", [req.params.id], () => res.json({ success: true }));
+  const pId = req.params.id;
+  db.serialize(() => {
+    db.run("DELETE FROM people WHERE parent_id = ?", [pId]);
+    db.run("DELETE FROM people WHERE id = ?", [pId], () => res.json({ success: true }));
+  });
 });
 
 // Movimientos
 app.get('/api/movements', (req, res) => {
-  db.all(`SELECT m.*, COALESCE(c.name, 'Desconocida') as card_name, COALESCE(p.name, 'Desconocido') as person_name
+  db.all(`SELECT m.*, COALESCE(c.name, 'Desconocida') as card_name, COALESCE(p.name, 'Desconocido') as person_name,
+                 COALESCE(sp.name, '') as sub_person_name
           FROM movements m
-          LEFT JOIN cards c ON m.card_id = c.id LEFT JOIN people p ON m.person_id = p.id
+          LEFT JOIN cards c ON m.card_id = c.id
+          LEFT JOIN people p ON m.person_id = p.id
+          LEFT JOIN people sp ON m.sub_person_id = sp.id
           ORDER BY m.date ASC`, (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     db.all(`SELECT * FROM set_asides`, (errSa, asides) => {
@@ -366,28 +377,28 @@ app.get('/api/movements', (req, res) => {
 });
 
 app.post('/api/movements', (req, res) => {
-  const { concept, amount, date, card_id, person_id, is_msi, msi_months } = req.body;
+  const { concept, amount, date, card_id, person_id, sub_person_id, is_msi, msi_months } = req.body;
   const now = Date.now();
   if (is_msi) {
     const msiId = crypto.randomUUID();
-    db.run(`INSERT INTO installment_plans (id, concept, total_amount, months, start_date, card_id, person_id, paid_months, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`, [msiId, concept, amount, msi_months || 12, date, card_id, person_id, now],
+    db.run(`INSERT INTO installment_plans (id, concept, total_amount, months, start_date, card_id, person_id, sub_person_id, paid_months, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`, [msiId, concept, amount, msi_months || 12, date, card_id, person_id, sub_person_id || null, now],
       () => res.json({ success: true, msiId }));
   } else {
     const movId = crypto.randomUUID();
-    db.run(`INSERT INTO movements (id, concept, amount, date, card_id, person_id, is_set_aside, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, 0, ?)`, [movId, concept, amount, date, card_id, person_id, now],
+    db.run(`INSERT INTO movements (id, concept, amount, date, card_id, person_id, sub_person_id, is_set_aside, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`, [movId, concept, amount, date, card_id, person_id, sub_person_id || null, now],
       () => res.json({ success: true, id: movId }));
   }
 });
 
 app.put('/api/movements/:id', (req, res) => {
-  const { concept, amount, date, card_id, person_id } = req.body;
+  const { concept, amount, date, card_id, person_id, sub_person_id } = req.body;
   const now = Date.now();
   db.run(`UPDATE movements 
-          SET concept = ?, amount = ?, date = ?, card_id = ?, person_id = ?, updated_at = ?
+          SET concept = ?, amount = ?, date = ?, card_id = ?, person_id = ?, sub_person_id = ?, updated_at = ?
           WHERE id = ?`,
-    [concept, amount, date, card_id, person_id, now, req.params.id],
+    [concept, amount, date, card_id, person_id, sub_person_id || null, now, req.params.id],
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, changes: this.changes });
@@ -396,12 +407,12 @@ app.put('/api/movements/:id', (req, res) => {
 });
 
 app.post('/api/movements/:id/update', (req, res) => {
-  const { concept, amount, date, card_id, person_id } = req.body;
+  const { concept, amount, date, card_id, person_id, sub_person_id } = req.body;
   const now = Date.now();
   db.run(`UPDATE movements 
-          SET concept = ?, amount = ?, date = ?, card_id = ?, person_id = ?, updated_at = ?
+          SET concept = ?, amount = ?, date = ?, card_id = ?, person_id = ?, sub_person_id = ?, updated_at = ?
           WHERE id = ?`,
-    [concept, amount, date, card_id, person_id, now, req.params.id],
+    [concept, amount, date, card_id, person_id, sub_person_id || null, now, req.params.id],
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ success: true, changes: this.changes });

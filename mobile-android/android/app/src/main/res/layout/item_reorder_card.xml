@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/bg_card_secondary"
+    android:padding="12dp"
+    android:layout_marginBottom="8dp">
+
+    <TextView
+        android:id="@+id/tv_reorder_num"
+        android:layout_width="26dp"
+        android:layout_height="wrap_content"
+        android:text="1."
+        android:textColor="#94a3b8"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <View
+        android:id="@+id/view_reorder_color"
+        android:layout_width="14dp"
+        android:layout_height="14dp"
+        android:layout_marginEnd="10dp" />
+
+    <TextView
+        android:id="@+id/tv_reorder_name"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="Nombre Tarjeta"
+        android:textColor="#ffffff"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:ellipsize="end"
+        android:maxLines="1" />
+
+    <Button
+        android:id="@+id/btn_reorder_up"
+        android:layout_width="38dp"
+        android:layout_height="36dp"
+        android:text="⬆️"
+        android:textSize="13sp"
+        android:textColor="#ffffff"
+        android:background="@drawable/bg_sidebar_item_normal"
+        android:layout_marginEnd="6dp" />
+
+    <Button
+        android:id="@+id/btn_reorder_down"
+        android:layout_width="38dp"
+        android:layout_height="36dp"
+        android:text="⬇️"
+        android:textSize="13sp"
+        android:textColor="#ffffff"
+        android:background="@drawable/bg_sidebar_item_normal" />
+
+</LinearLayout>

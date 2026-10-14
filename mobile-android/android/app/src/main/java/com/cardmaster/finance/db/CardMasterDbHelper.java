@@ -69,7 +69,8 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
 
         db.execSQL("CREATE TABLE people (" +
                 "id TEXT PRIMARY KEY, " +
-                "name TEXT NOT NULL UNIQUE, " +
+                "name TEXT NOT NULL, " +
+                "parent_id TEXT, " +
                 "updated_at INTEGER)");
 
         db.execSQL("CREATE TABLE movements (" +
@@ -79,6 +80,7 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
                 "date TEXT NOT NULL, " +
                 "card_id TEXT NOT NULL, " +
                 "person_id TEXT NOT NULL, " +
+                "sub_person_id TEXT, " +
                 "is_set_aside INTEGER DEFAULT 0, " +
                 "updated_at INTEGER)");
 
@@ -135,6 +137,12 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
         try {
             db.execSQL("ALTER TABLE cards ADD COLUMN display_order INTEGER DEFAULT 0");
         } catch (Exception ignored) {}
+        try {
+            db.execSQL("ALTER TABLE people ADD COLUMN parent_id TEXT");
+        } catch (Exception ignored) {}
+        try {
+            db.execSQL("ALTER TABLE movements ADD COLUMN sub_person_id TEXT");
+        } catch (Exception ignored) {}
         seedInitialData(db);
     }
 
@@ -160,14 +168,23 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
     }
 
     private void insertPersonRow(SQLiteDatabase db, String id, String name, long now) {
+        insertPersonRow(db, id, name, null, now);
+    }
+
+    private void insertPersonRow(SQLiteDatabase db, String id, String name, String parentId, long now) {
         ContentValues cv = new ContentValues();
         cv.put("id", id);
         cv.put("name", name);
+        cv.put("parent_id", parentId);
         cv.put("updated_at", now);
         db.insertWithOnConflict("people", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
     }
 
     private void insertMovementRow(SQLiteDatabase db, String id, String concept, double amount, String date, String cardId, String personId, int isSetAside, long now) {
+        insertMovementRow(db, id, concept, amount, date, cardId, personId, null, isSetAside, now);
+    }
+
+    private void insertMovementRow(SQLiteDatabase db, String id, String concept, double amount, String date, String cardId, String personId, String subPersonId, int isSetAside, long now) {
         ContentValues cv = new ContentValues();
         cv.put("id", id);
         cv.put("concept", concept);
@@ -175,6 +192,7 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
         cv.put("date", date);
         cv.put("card_id", cardId);
         cv.put("person_id", personId);
+        cv.put("sub_person_id", subPersonId);
         cv.put("is_set_aside", isSetAside);
         cv.put("updated_at", now);
         db.insertWithOnConflict("movements", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
@@ -626,10 +644,11 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
 
         StringBuilder query = new StringBuilder(
                 "SELECT m.id, m.concept, m.amount, m.date, m.card_id, m.person_id, m.is_set_aside, m.updated_at, " +
-                "c.name as card_name, p.name as person_name " +
+                "c.name as card_name, p.name as person_name, m.sub_person_id, sp.name as sub_person_name " +
                 "FROM movements m " +
                 "LEFT JOIN cards c ON m.card_id = c.id " +
                 "LEFT JOIN people p ON m.person_id = p.id " +
+                "LEFT JOIN people sp ON m.sub_person_id = sp.id " +
                 "WHERE 1=1 ");
 
         List<String> args = new ArrayList<>();
@@ -653,11 +672,13 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
                         c.getString(3),
                         c.getString(4),
                         c.getString(5),
+                        c.getString(10),
                         c.getInt(6),
                         c.getLong(7)
                 );
                 m.setCardName(c.getString(8) != null ? c.getString(8) : "Sin Tarjeta");
                 m.setPersonName(c.getString(9) != null ? c.getString(9) : "Personal");
+                m.setSubPersonName(c.getString(11));
                 list.add(m);
             }
             c.close();
@@ -677,6 +698,7 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
         cv.put("date", mov.getDate());
         cv.put("card_id", mov.getCardId());
         cv.put("person_id", mov.getPersonId());
+        cv.put("sub_person_id", mov.getSubPersonId());
         cv.put("is_set_aside", mov.getIsSetAside());
         cv.put("updated_at", mov.getUpdatedAt());
 
@@ -698,10 +720,11 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
         List<Movement> allMovs = new ArrayList<>();
         Cursor cMovs = db.rawQuery(
                 "SELECT m.id, m.concept, m.amount, m.date, m.card_id, m.person_id, m.is_set_aside, m.updated_at, " +
-                "c.name as card_name, p.name as person_name " +
+                "c.name as card_name, p.name as person_name, m.sub_person_id, sp.name as sub_person_name " +
                 "FROM movements m " +
                 "LEFT JOIN cards c ON m.card_id = c.id " +
                 "LEFT JOIN people p ON m.person_id = p.id " +
+                "LEFT JOIN people sp ON m.sub_person_id = sp.id " +
                 "WHERE m.person_id = ? " +
                 "ORDER BY m.date ASC, m.updated_at ASC", new String[]{personId});
 
@@ -714,11 +737,13 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
                         cMovs.getString(3),
                         cMovs.getString(4),
                         cMovs.getString(5),
+                        cMovs.getString(10),
                         cMovs.getInt(6),
                         cMovs.getLong(7)
                 );
                 m.setCardName(cMovs.getString(8) != null ? cMovs.getString(8) : "Sin Tarjeta");
                 m.setPersonName(cMovs.getString(9) != null ? cMovs.getString(9) : "Personal");
+                m.setSubPersonName(cMovs.getString(11));
                 allMovs.add(m);
             }
             cMovs.close();
@@ -1093,16 +1118,54 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
     public List<Person> getAllPeople() {
         List<Person> list = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.rawQuery("SELECT id, name, updated_at FROM people ORDER BY name ASC", null);
+        Cursor c = db.rawQuery("SELECT id, name, parent_id, updated_at FROM people WHERE parent_id IS NULL OR parent_id = '' ORDER BY name ASC", null);
         if (c != null) {
             while (c.moveToNext()) {
-                Person p = new Person(c.getString(0), c.getString(1), c.getLong(2));
+                Person p = new Person(c.getString(0), c.getString(1), c.getString(2), c.getLong(3));
                 computePersonMetrics(p, db);
+                p.setSubPeople(getSubPeopleForPerson(p.getId(), db));
                 list.add(p);
             }
             c.close();
         }
         return list;
+    }
+
+    public List<Person> getSubPeopleForPerson(String parentId) {
+        SQLiteDatabase db = getReadableDatabase();
+        return getSubPeopleForPerson(parentId, db);
+    }
+
+    private List<Person> getSubPeopleForPerson(String parentId, SQLiteDatabase db) {
+        List<Person> list = new ArrayList<>();
+        if (parentId == null || parentId.isEmpty()) return list;
+        Cursor c = db.rawQuery("SELECT id, name, parent_id, updated_at FROM people WHERE parent_id = ? ORDER BY name ASC", new String[]{parentId});
+        if (c != null) {
+            while (c.moveToNext()) {
+                Person sub = new Person(c.getString(0), c.getString(1), c.getString(2), c.getLong(3));
+                Cursor cSpent = db.rawQuery("SELECT COALESCE(SUM(amount), 0) FROM movements WHERE person_id = ? AND sub_person_id = ?", new String[]{parentId, sub.getId()});
+                if (cSpent != null) {
+                    if (cSpent.moveToFirst()) {
+                        sub.setSpentForSubPerson(cSpent.getDouble(0));
+                    }
+                    cSpent.close();
+                }
+                list.add(sub);
+            }
+            c.close();
+        }
+        return list;
+    }
+
+    public double getSpentForPersonGeneral(String personId) {
+        SQLiteDatabase db = getReadableDatabase();
+        double gen = 0;
+        Cursor c = db.rawQuery("SELECT COALESCE(SUM(amount), 0) FROM movements WHERE person_id = ? AND (sub_person_id IS NULL OR sub_person_id = '')", new String[]{personId});
+        if (c != null) {
+            if (c.moveToFirst()) gen = c.getDouble(0);
+            c.close();
+        }
+        return gen;
     }
 
     private void computePersonMetrics(Person p, SQLiteDatabase db) {
@@ -1152,16 +1215,35 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
         ContentValues cv = new ContentValues();
         cv.put("id", p.getId());
         cv.put("name", p.getName());
+        cv.put("parent_id", p.getParentId());
         cv.put("updated_at", p.getUpdatedAt());
 
-        long res = db.insertWithOnConflict("people", null, cv, SQLiteDatabase.CONFLICT_IGNORE);
+        long res = db.insertWithOnConflict("people", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
         return res != -1;
+    }
+
+    public boolean updatePerson(Person p) {
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put("name", p.getName());
+        cv.put("parent_id", p.getParentId());
+        cv.put("updated_at", System.currentTimeMillis());
+        int count = db.update("people", cv, "id = ?", new String[]{p.getId()});
+        return count > 0;
     }
 
     public boolean deletePerson(String id) {
         SQLiteDatabase db = getWritableDatabase();
-        int count = db.delete("people", "id = ?", new String[]{id});
+        int count = db.delete("people", "id = ? OR parent_id = ?", new String[]{id, id});
         return count > 0;
+    }
+
+    public boolean deleteSubPerson(String subPersonId) {
+        SQLiteDatabase db = getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.putNull("sub_person_id");
+        db.update("movements", cv, "sub_person_id = ?", new String[]{subPersonId});
+        return db.delete("people", "id = ?", new String[]{subPersonId}) > 0;
     }
 
     // =========================================================================
@@ -1317,13 +1399,14 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
 
         // Personas
         JSONArray arrPeople = new JSONArray();
-        Cursor cPeople = db.rawQuery("SELECT id, name, updated_at FROM people", null);
+        Cursor cPeople = db.rawQuery("SELECT id, name, parent_id, updated_at FROM people", null);
         if (cPeople != null) {
             while (cPeople.moveToNext()) {
                 JSONObject o = new JSONObject();
                 o.put("id", cPeople.getString(0));
                 o.put("name", cPeople.getString(1));
-                o.put("updated_at", cPeople.getLong(2));
+                o.put("parent_id", cPeople.getString(2) != null ? cPeople.getString(2) : JSONObject.NULL);
+                o.put("updated_at", cPeople.getLong(3));
                 arrPeople.put(o);
             }
             cPeople.close();
@@ -1332,7 +1415,7 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
 
         // Movimientos
         JSONArray arrMovs = new JSONArray();
-        Cursor cMovs = db.rawQuery("SELECT id, concept, amount, date, card_id, person_id, is_set_aside, updated_at FROM movements", null);
+        Cursor cMovs = db.rawQuery("SELECT id, concept, amount, date, card_id, person_id, sub_person_id, is_set_aside, updated_at FROM movements", null);
         if (cMovs != null) {
             while (cMovs.moveToNext()) {
                 JSONObject o = new JSONObject();
@@ -1342,8 +1425,9 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
                 o.put("date", cMovs.getString(3));
                 o.put("card_id", cMovs.getString(4));
                 o.put("person_id", cMovs.getString(5));
-                o.put("is_set_aside", cMovs.getInt(6));
-                o.put("updated_at", cMovs.getLong(7));
+                o.put("sub_person_id", cMovs.getString(6) != null ? cMovs.getString(6) : JSONObject.NULL);
+                o.put("is_set_aside", cMovs.getInt(7));
+                o.put("updated_at", cMovs.getLong(8));
                 arrMovs.put(o);
             }
             cMovs.close();
@@ -1504,6 +1588,7 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
                     ContentValues cv = new ContentValues();
                     cv.put("id", o.optString("id", UUID.randomUUID().toString()));
                     cv.put("name", o.optString("name", "Personal"));
+                    cv.put("parent_id", o.has("parent_id") && !o.isNull("parent_id") ? o.optString("parent_id", null) : null);
                     cv.put("updated_at", o.optLong("updated_at", now));
                     db.insert("people", null, cv);
                 }
@@ -1520,6 +1605,7 @@ public class CardMasterDbHelper extends SQLiteOpenHelper {
                     cv.put("date", o.optString("date", ""));
                     cv.put("card_id", o.optString("card_id", ""));
                     cv.put("person_id", o.optString("person_id", ""));
+                    cv.put("sub_person_id", o.has("sub_person_id") && !o.isNull("sub_person_id") ? o.optString("sub_person_id", null) : null);
                     cv.put("is_set_aside", o.optInt("is_set_aside", 0));
                     cv.put("updated_at", o.optLong("updated_at", now));
                     db.insert("movements", null, cv);

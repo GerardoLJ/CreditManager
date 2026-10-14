@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_dialog"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tv_dialog_reorder_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="⇅ Organizar Orden de Tarjetas"
+        android:textColor="#ffffff"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="6dp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Usa los botones ⬆️ y ⬇️ para mover las tarjetas al orden que prefieras. Los cambios se aplicarán inmediatamente:"
+        android:textColor="#94a3b8"
+        android:textSize="13sp"
+        android:layout_marginBottom="16dp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:maxHeight="380dp"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:id="@+id/layout_reorder_cards_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
+    <Button
+        android:id="@+id/btn_dialog_reorder_done"
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:text="✓ Listo / Guardar Orden"
+        android:textColor="#ffffff"
+        android:textStyle="bold"
+        android:background="@drawable/bg_primary_button"
+        android:layout_marginTop="16dp" />
+
+</LinearLayout>

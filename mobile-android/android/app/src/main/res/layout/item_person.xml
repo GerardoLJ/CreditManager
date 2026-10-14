@@ -95,6 +95,49 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- SUBDEUDORES / SUBPERSONAS / SUBETIQUETAS -->
+        <LinearLayout
+            android:id="@+id/layout_person_subpeople_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="6dp">
+
+                <TextView
+                    android:id="@+id/tv_person_subpeople_header"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="🏷️ Subdeudores / Subetiquetas:"
+                    android:textColor="#94a3b8"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btn_item_person_add_subperson"
+                    android:layout_width="wrap_content"
+                    android:layout_height="28dp"
+                    android:text="+ Subdeudor"
+                    android:textColor="#38bdf8"
+                    android:textSize="11sp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:paddingHorizontal="6dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/layout_person_subpeople_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+
         <!-- GASTOS PENDIENTES POR APARTAR DE ESTA PERSONA -->
         <LinearLayout
             android:id="@+id/layout_person_pending_movements_section"

@@ -814,70 +814,6 @@ function saveCardsOrder() {
 
 let cachedCardsList = [];
 
-function openMoveCardModal(cardId) {
-  const container = document.getElementById('cards-grid');
-  if (!container) return;
-  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
-  const currentIdx = cardEls.findIndex(el => String(el.dataset.cardId) === String(cardId));
-  const cardData = cachedCardsList.find(c => String(c.id) === String(cardId));
-  const cardName = cardData ? cardData.name : 'esta tarjeta';
-
-  const titleEl = document.getElementById('modal-move-card-title');
-  if (titleEl) titleEl.textContent = `⇅ Mover '${cardName}'`;
-
-  const listEl = document.getElementById('move-card-positions-list');
-  if (!listEl) return;
-  listEl.innerHTML = '';
-
-  cardEls.forEach((el, idx) => {
-    const cId = el.dataset.cardId;
-    const c = cachedCardsList.find(x => String(x.id) === String(cId));
-    const name = c ? c.name : `Tarjeta #${idx + 1}`;
-
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `move-pos-btn ${idx === currentIdx ? 'active-pos' : ''}`;
-
-    let posLabel = `${idx + 1}ª posición`;
-    if (idx === 0) posLabel += ' (Inicio)';
-    else if (idx === cardEls.length - 1) posLabel += ' (Final)';
-
-    btn.innerHTML = `
-      <span><strong>${posLabel}</strong> • ${escapeHtml(name)}</span>
-      <span style="font-size:0.8rem; font-weight:700;">${idx === currentIdx ? '★ Actual' : 'Colocar aquí ➔'}</span>
-    `;
-
-    btn.onclick = () => {
-      moveCardToPosition(cardId, idx);
-      closeMoveCardModal();
-    };
-
-    listEl.appendChild(btn);
-  });
-
-  const modal = document.getElementById('modal-move-card');
-  if (modal) modal.classList.remove('hidden');
-}
-
-function moveCardToPosition(cardId, targetIdx) {
-  const container = document.getElementById('cards-grid');
-  if (!container) return;
-  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
-  const currentIdx = cardEls.findIndex(el => String(el.dataset.cardId) === String(cardId));
-  if (currentIdx === -1 || currentIdx === targetIdx) return;
-
-  const targetEl = cardEls[targetIdx];
-  const movingEl = cardEls[currentIdx];
-
-  if (targetIdx < currentIdx) {
-    container.insertBefore(movingEl, targetEl);
-  } else {
-    container.insertBefore(movingEl, targetEl.nextSibling);
-  }
-  saveCardsOrder();
-  showToast(`Tarjeta colocada en la posición ${targetIdx + 1}`, "success");
-}
-
 function openReorderCardsModal() {
   const container = document.getElementById('cards-grid');
   if (!container) return;
@@ -886,7 +822,58 @@ function openReorderCardsModal() {
     showToast("Registra al menos 2 tarjetas para poder organizarlas", "info");
     return;
   }
-  openMoveCardModal(cardEls[0].dataset.cardId);
+  const titleEl = document.getElementById('modal-move-card-title');
+  if (titleEl) titleEl.textContent = '⇅ Organizar Tarjetas';
+  renderReorderCardsList();
+  const modal = document.getElementById('modal-move-card');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function openMoveCardModal(cardId) {
+  openReorderCardsModal();
+}
+
+function renderReorderCardsList() {
+  const container = document.getElementById('cards-grid');
+  const listEl = document.getElementById('move-card-positions-list');
+  if (!container || !listEl) return;
+
+  const cardEls = Array.from(container.querySelectorAll('.credit-card-ui'));
+  listEl.innerHTML = '';
+
+  cardEls.forEach((el, idx) => {
+    const cId = el.dataset.cardId;
+    const c = (cachedCardsList || []).find(x => String(x.id) === String(cId));
+    const name = c ? c.name : `Tarjeta #${idx + 1}`;
+    const color = c ? (c.color || '#3b82f6') : '#3b82f6';
+    const isFirst = idx === 0;
+    const isLast = idx === cardEls.length - 1;
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--card-bg, #1e293b); border:1px solid var(--border-color, #334155); border-radius:10px; gap:10px;';
+    row.innerHTML = `
+      <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
+        <span style="font-size:0.85rem; font-weight:700; color:var(--text-muted); width:24px; text-align:center;">#${idx + 1}</span>
+        <div style="width:14px; height:14px; border-radius:50%; background:${color}; flex-shrink:0;"></div>
+        <span style="font-weight:600; font-size:0.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(name)}</span>
+      </div>
+      <div style="display:flex; gap:6px; flex-shrink:0;">
+        <button type="button" class="btn btn-sm btn-secondary" ${isFirst ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="Mover Arriba" onclick="moveCardUpInModal('${cId}')">⬆️</button>
+        <button type="button" class="btn btn-sm btn-secondary" ${isLast ? 'disabled style="opacity:0.3; cursor:not-allowed;"' : ''} title="Mover Abajo" onclick="moveCardDownInModal('${cId}')">⬇️</button>
+      </div>
+    `;
+    listEl.appendChild(row);
+  });
+}
+
+function moveCardUpInModal(cardId) {
+  moveCardUp(cardId);
+  renderReorderCardsList();
+}
+
+function moveCardDownInModal(cardId) {
+  moveCardDown(cardId);
+  renderReorderCardsList();
 }
 
 function closeMoveCardModal() {
@@ -895,9 +882,10 @@ function closeMoveCardModal() {
 }
 
 window.openMoveCardModal = openMoveCardModal;
-window.moveCardToPosition = moveCardToPosition;
 window.openReorderCardsModal = openReorderCardsModal;
 window.closeMoveCardModal = closeMoveCardModal;
+window.moveCardUpInModal = moveCardUpInModal;
+window.moveCardDownInModal = moveCardDownInModal;
 
 function moveCardUp(cardId) {
   const container = document.getElementById('cards-grid');
@@ -1672,7 +1660,7 @@ async function renderMovements() {
       <td>${m.date}</td>
       <td><strong>${escapeHtml(m.concept)}</strong></td>
       <td>${escapeHtml(m.card_name)}</td>
-      <td><span class="countdown-badge normal">${escapeHtml(m.person_name)}</span></td>
+      <td><span class="countdown-badge normal">${escapeHtml(m.person_name)}${m.sub_person_name ? ` • <small style="color:var(--primary-color, #38bdf8);">${escapeHtml(m.sub_person_name)}</small>` : ''}</span></td>
       <td style="font-weight: 700;">$${m.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
       <td>
         <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
@@ -1706,6 +1694,7 @@ async function openEditMovement(id) {
   document.getElementById('mov-date').value = m.date;
   document.getElementById('mov-card').value = m.card_id;
   document.getElementById('mov-person').value = m.person_id;
+  updateSubpersonOptions(m.person_id, m.sub_person_id);
 
   const msiContainer = document.getElementById('mov-msi-container');
   if (msiContainer) msiContainer.classList.add('hidden');
@@ -1724,6 +1713,7 @@ async function handleSaveMovement(e) {
     date: document.getElementById('mov-date').value,
     card_id: document.getElementById('mov-card').value,
     person_id: document.getElementById('mov-person').value,
+    sub_person_id: document.getElementById('mov-subperson')?.value || null,
     is_msi: document.getElementById('mov-is-msi').checked,
     msi_months: parseInt(document.getElementById('mov-msi-months').value)
   };
@@ -1769,8 +1759,11 @@ async function renderDebts() {
   const container = document.getElementById('debts-summary-container');
   container.innerHTML = '';
 
-  people.forEach(p => {
+  const parentPeople = people.filter(p => !p.parent_id);
+
+  parentPeople.forEach(p => {
     const pIdStr = String(p.id);
+    const subPeople = people.filter(sp => String(sp.parent_id) === pIdStr);
     const personMovs = movs.filter(m => String(m.person_id) === pIdStr);
     const personSetAsides = setAsides.filter(s => {
       if (s.movement_id) {
@@ -1783,6 +1776,13 @@ async function renderDebts() {
     const totalSpent = personMovs.reduce((sum, m) => sum + m.amount, 0);
     const totalApartado = personSetAsides.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
     const pendingToCollect = Math.max(0, totalSpent - totalApartado);
+
+    // Desglose por subdeudores / subetiquetas
+    const subBreakdown = subPeople.map(sp => {
+      const spSpent = personMovs.filter(m => String(m.sub_person_id) === String(sp.id)).reduce((sum, m) => sum + m.amount, 0);
+      return { id: sp.id, name: sp.name, spent: spSpent };
+    });
+    const generalSpent = personMovs.filter(m => !m.sub_person_id).reduce((sum, m) => sum + m.amount, 0);
 
     const cardBreakdown = [];
     cards.forEach(c => {
@@ -1869,6 +1869,36 @@ async function renderDebts() {
         <span>Total consumido: $${totalSpent.toLocaleString('es-MX')}</span> | 
         <span style="color:var(--success-color);">Ya entregado: $${totalApartado.toLocaleString('es-MX')}</span>
       </div>
+
+      <!-- SECCIÓN SUBDEUDORES / SUBETIQUETAS -->
+      <div style="margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+          <strong style="font-size:0.85rem; color:var(--text-muted);">🏷️ Subdeudores / Subetiquetas:</strong>
+          <button class="btn btn-sm btn-outline" style="padding: 2px 8px; font-size: 0.75rem;" onclick="openAddSubPersonModal('${p.id}', '${escapeHtml(p.name)}')">+ Subdeudor</button>
+        </div>
+        ${subPeople.length > 0 ? `
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            ${subBreakdown.map(sb => `
+              <div style="display:flex; justify-content:space-between; align-items:center; padding: 4px 8px; background: rgba(0,0,0,0.15); border-radius: 6px; font-size: 0.82rem;">
+                <div>
+                  <strong>🏷️ ${escapeHtml(sb.name)}:</strong>
+                  <span style="color:var(--text-muted); margin-left: 6px;">Gastado: $${sb.spent.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                </div>
+                <button class="btn btn-sm btn-outline-danger" style="padding:1px 6px; font-size:0.7rem;" title="Eliminar subetiqueta" onclick="deleteSubPerson('${sb.id}', '${escapeHtml(sb.name)}')">✕</button>
+              </div>
+            `).join('')}
+            ${generalSpent > 0 ? `
+              <div style="display:flex; justify-content:space-between; align-items:center; padding: 4px 8px; font-size: 0.8rem; color: var(--text-muted);">
+                <span>(General / Sin subetiqueta):</span>
+                <span>$${generalSpent.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+              </div>
+            ` : ''}
+          </div>
+        ` : `
+          <div class="small text-muted" style="font-size:0.8rem;">Sin subdeudores asignados (ej. Coche, Casa, Super).</div>
+        `}
+      </div>
+
       <strong>Desglose por Tarjetas:</strong>
       <ul class="debt-breakdown-list">
         ${cardBreakdown.length > 0 ? cardBreakdown.map(b => `
@@ -1898,7 +1928,7 @@ async function renderDebts() {
               return `
                 <li>
                   <div class="debt-breakdown-info">
-                    <strong>${escapeHtml(m.concept)}</strong>
+                    <strong>${escapeHtml(m.concept)}${m.sub_person_name ? ` <span style="font-size:0.75rem; color:#38bdf8; font-weight:normal;">[🏷️ ${escapeHtml(m.sub_person_name)}]</span>` : ''}</strong>
                     <span class="small text-muted">${m.date} | 💳 ${escapeHtml(cardName)} | Total: $${m.amount.toLocaleString('es-MX', {minimumFractionDigits: 2})}${m.total_aside > 0.001 ? ` | Apartado: $${m.total_aside.toLocaleString('es-MX', {minimumFractionDigits: 2})}` : ''}</span>
                     <span class="debt-breakdown-pending">Falta por apartar: <strong>$${m.remaining.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></span>
                   </div>
@@ -1919,6 +1949,34 @@ async function renderDebts() {
     container.appendChild(box);
   });
 }
+
+window.openAddSubPersonModal = async function(parentId, parentName) {
+  const name = prompt(`Agregar nuevo subdeudor o subetiqueta para "${parentName}" (ej. Coche, Despensa, Casa):`);
+  if (!name || !name.trim()) return;
+  const res = await fetch('/api/people', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name.trim(), parent_id: parentId })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    showToast(data.error || "Error al agregar subdeudor", "error");
+    return;
+  }
+  showToast(`Subdeudor "${name.trim()}" agregado a ${parentName}`, "success");
+  await refreshAllData();
+  await syncPhysicalDbFile();
+};
+
+window.deleteSubPerson = async function(subId, subName) {
+  if (!confirm(`¿Eliminar la subetiqueta "${subName}"? Los gastos asociados volverán a quedar como generales.`)) return;
+  const res = await fetch(`/api/people/${subId}`, { method: 'DELETE' });
+  if (res.ok) {
+    showToast(`Subetiqueta eliminada`, "info");
+    await refreshAllData();
+    await syncPhysicalDbFile();
+  }
+};
 
 async function deletePerson(pId) {
   if (!confirm("¿Eliminar persona?")) return;
@@ -2465,11 +2523,60 @@ async function renderBudgets() {
 }
 
 // --- POPULATE SELECTS ---
+let allPeopleCache = [];
+
+function updateSubpersonOptions(selectedPersonId, selectedSubpersonId = null) {
+  const el = document.getElementById('mov-subperson');
+  if (!el) return;
+  const subs = allPeopleCache.filter(p => String(p.parent_id) === String(selectedPersonId));
+  el.innerHTML = '<option value="">-- General (Sin subetiqueta) --</option>';
+  subs.forEach(s => {
+    el.innerHTML += `<option value="${s.id}">${escapeHtml(s.name)}</option>`;
+  });
+  el.innerHTML += '<option value="__new__">➕ + Nuevo subdeudor / subetiqueta...</option>';
+  if (selectedSubpersonId && subs.some(s => String(s.id) === String(selectedSubpersonId))) {
+    el.value = selectedSubpersonId;
+  } else {
+    el.value = "";
+  }
+}
+
+async function handleSubpersonSelectChange(e) {
+  const el = e.target;
+  if (el.value === '__new__') {
+    const personId = document.getElementById('mov-person').value;
+    const parent = allPeopleCache.find(p => String(p.id) === String(personId));
+    const parentName = parent ? parent.name : 'esta persona';
+    const name = prompt(`Agregar nuevo subdeudor o subetiqueta a "${parentName}" (ej. Coche, Despensa, Casa):`);
+    if (name && name.trim()) {
+      const res = await fetch('/api/people', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), parent_id: personId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.id) {
+        showToast(`Subetiqueta "${name.trim()}" agregada`, 'success');
+        await refreshAllData();
+        await syncPhysicalDbFile();
+        updateSubpersonOptions(personId, data.id);
+        return;
+      } else {
+        showToast(data.error || 'Error al agregar subetiqueta', 'error');
+      }
+    }
+    el.value = '';
+  }
+}
+
 async function populateSelects() {
   const [cards, people] = await Promise.all([
     fetch('/api/cards').then(r => r.json()),
     fetch('/api/people').then(r => r.json())
   ]);
+
+  allPeopleCache = people || [];
+  const parentPeople = (people || []).filter(p => !p.parent_id);
 
   const populate = (id, items) => {
     const el = document.getElementById(id);
@@ -2481,15 +2588,20 @@ async function populateSelects() {
   populate('mov-card', cards);
   populate('setaside-card', cards);
   populate('transfer-card', cards);
-  populate('mov-person', people);
-  populate('setaside-person', people);
+  populate('mov-person', parentPeople);
+  populate('setaside-person', parentPeople);
 
   const filterCard = document.getElementById('filter-card');
   const filterPerson = document.getElementById('filter-person');
   filterCard.innerHTML = `<option value="all">Todas las tarjetas</option>`;
   filterPerson.innerHTML = `<option value="all">Todas las personas</option>`;
   cards.forEach(c => filterCard.innerHTML += `<option value="${c.id}">${escapeHtml(c.name)}</option>`);
-  people.forEach(p => filterPerson.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`);
+  parentPeople.forEach(p => filterPerson.innerHTML += `<option value="${p.id}">${escapeHtml(p.name)}</option>`);
+
+  const currentMovPersonId = document.getElementById('mov-person')?.value;
+  if (currentMovPersonId) {
+    updateSubpersonOptions(currentMovPersonId);
+  }
 }
 
 // --- RESETEO DE TARJETAS ---
@@ -2991,8 +3103,22 @@ function setupEventListeners() {
     document.getElementById('msi-extra-fields').classList.add('hidden');
     document.getElementById('mov-is-msi').checked = false;
     document.getElementById('mov-date').value = new Date().toISOString().split('T')[0];
+    updateSubpersonOptions(document.getElementById('mov-person')?.value);
     document.getElementById('modal-movement').classList.remove('hidden');
   });
+
+  const movPersonSelect = document.getElementById('mov-person');
+  if (movPersonSelect) {
+    movPersonSelect.addEventListener('change', (e) => {
+      updateSubpersonOptions(e.target.value);
+    });
+  }
+
+  const movSubpersonSelect = document.getElementById('mov-subperson');
+  if (movSubpersonSelect) {
+    movSubpersonSelect.addEventListener('change', handleSubpersonSelectChange);
+  }
+
   document.getElementById('form-movement').addEventListener('submit', handleSaveMovement);
   document.getElementById('mov-is-msi').addEventListener('change', (e) => {
     document.getElementById('msi-extra-fields').classList.toggle('hidden', !e.target.checked);

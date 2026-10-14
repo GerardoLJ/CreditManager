@@ -23,6 +23,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.Collections;
+
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
@@ -453,53 +455,86 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void showMoveCardDialog(Card card, int currentIndex, List<Card> cards) {
-        if (cards == null || cards.size() <= 1) return;
-
-        String[] options = new String[cards.size()];
-        for (int i = 0; i < cards.size(); i++) {
-            if (i == currentIndex) {
-                options[i] = (i + 1) + "ª posición (" + cards.get(i).getName() + ") ★ Posición Actual";
-            } else if (i == 0) {
-                options[i] = "1ª posición (Inicio - antes de " + cards.get(0).getName() + ")";
-            } else if (i == cards.size() - 1) {
-                options[i] = (i + 1) + "ª posición (Al final)";
-            } else {
-                options[i] = (i + 1) + "ª posición (en lugar de " + cards.get(i).getName() + ")";
-            }
-        }
-
-        new AlertDialog.Builder(this)
-                .setTitle("⇅ Mover '" + card.getName() + "'")
-                .setItems(options, (dialog, which) -> {
-                    if (which != currentIndex) {
-                        cards.remove(currentIndex);
-                        cards.add(which, card);
-                        dbHelper.updateCardOrder(cards);
-                        Toast.makeText(this, "Tarjeta movida a la posición " + (which + 1), Toast.LENGTH_SHORT).show();
-                        selectTab(0);
-                    }
-                })
-                .setNegativeButton("Cancelar", null)
-                .show();
-    }
-
     private void showReorderCardsDialog(List<Card> cards) {
         if (cards == null || cards.size() <= 1) return;
 
-        String[] cardNames = new String[cards.size()];
-        for (int i = 0; i < cards.size(); i++) {
-            cardNames[i] = (i + 1) + ". " + cards.get(i).getName();
-        }
+        View dView = LayoutInflater.from(this).inflate(R.layout.dialog_reorder_cards, null);
+        LinearLayout listLayout = dView.findViewById(R.id.layout_reorder_cards_list);
+        Button btnDone = dView.findViewById(R.id.btn_dialog_reorder_done);
 
-        new AlertDialog.Builder(this)
-                .setTitle("⇅ Selecciona tarjeta para mover de lugar")
-                .setItems(cardNames, (dialog, which) -> {
-                    Card selected = cards.get(which);
-                    showMoveCardDialog(selected, which, cards);
-                })
-                .setNegativeButton("Cerrar", null)
-                .show();
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(dView)
+                .create();
+
+        Runnable[] populateRef = new Runnable[1];
+        populateRef[0] = new Runnable() {
+            @Override
+            public void run() {
+                listLayout.removeAllViews();
+                LayoutInflater inflater = LayoutInflater.from(MainActivity.this);
+
+                for (int i = 0; i < cards.size(); i++) {
+                    final int idx = i;
+                    Card c = cards.get(i);
+                    View row = inflater.inflate(R.layout.item_reorder_card, listLayout, false);
+
+                    TextView tvNum = row.findViewById(R.id.tv_reorder_num);
+                    View colorDot = row.findViewById(R.id.view_reorder_color);
+                    TextView tvName = row.findViewById(R.id.tv_reorder_name);
+                    Button btnUp = row.findViewById(R.id.btn_reorder_up);
+                    Button btnDown = row.findViewById(R.id.btn_reorder_down);
+
+                    tvNum.setText((i + 1) + ".");
+                    tvName.setText(c.getName());
+
+                    if (c.getColor() != null && !c.getColor().isEmpty() && colorDot != null) {
+                        try {
+                            android.graphics.drawable.GradientDrawable dot = new android.graphics.drawable.GradientDrawable();
+                            dot.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+                            dot.setColor(Color.parseColor(c.getColor()));
+                            colorDot.setBackground(dot);
+                        } catch (Exception ignored) {}
+                    }
+
+                    btnUp.setEnabled(idx > 0);
+                    btnUp.setAlpha(idx > 0 ? 1.0f : 0.35f);
+                    btnUp.setOnClickListener(v -> {
+                        if (idx > 0) {
+                            Collections.swap(cards, idx, idx - 1);
+                            dbHelper.updateCardOrder(cards);
+                            populateRef[0].run();
+                            selectTab(0);
+                        }
+                    });
+
+                    btnDown.setEnabled(idx < cards.size() - 1);
+                    btnDown.setAlpha(idx < cards.size() - 1 ? 1.0f : 0.35f);
+                    btnDown.setOnClickListener(v -> {
+                        if (idx < cards.size() - 1) {
+                            Collections.swap(cards, idx, idx + 1);
+                            dbHelper.updateCardOrder(cards);
+                            populateRef[0].run();
+                            selectTab(0);
+                        }
+                    });
+
+                    listLayout.addView(row);
+                }
+            }
+        };
+
+        populateRef[0].run();
+
+        btnDone.setOnClickListener(v -> {
+            dialog.dismiss();
+            selectTab(0);
+        });
+
+        dialog.show();
+    }
+
+    private void showMoveCardDialog(Card c, int cardIndex, List<Card> cards) {
+        showReorderCardsDialog(cards);
     }
 
     private void showCardDialog(Card existingCard) {
@@ -934,7 +969,11 @@ public class MainActivity extends AppCompatActivity {
                 tvConcept.setText(m.getConcept());
                 tvDate.setText(m.getDate());
                 tvCard.setText(m.getCardName());
-                tvPerson.setText(m.getPersonName());
+                if (m.getSubPersonName() != null && !m.getSubPersonName().isEmpty()) {
+                    tvPerson.setText(m.getPersonName() + " • " + m.getSubPersonName());
+                } else {
+                    tvPerson.setText(m.getPersonName());
+                }
                 tvAmount.setText("-" + formatCurrency(m.getAmount()));
 
                 btnDelete.setOnClickListener(v -> {
@@ -969,6 +1008,8 @@ public class MainActivity extends AppCompatActivity {
         EditText etDate = dView.findViewById(R.id.et_mov_date);
         Spinner spCard = dView.findViewById(R.id.spinner_mov_card);
         Spinner spPerson = dView.findViewById(R.id.spinner_mov_person);
+        LinearLayout layoutSubperson = dView.findViewById(R.id.layout_mov_subperson);
+        Spinner spSubperson = dView.findViewById(R.id.spinner_mov_subperson);
         CheckBox cbMsi = dView.findViewById(R.id.cb_mov_msi);
         LinearLayout layoutMsi = dView.findViewById(R.id.layout_mov_msi_months);
         Spinner spMonths = dView.findViewById(R.id.spinner_mov_msi_months);
@@ -984,6 +1025,63 @@ public class MainActivity extends AppCompatActivity {
         List<String> personNames = new ArrayList<>();
         for (Person p : people) personNames.add(p.getName());
         spPerson.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, personNames));
+
+        List<Person> currentSubPeople = new ArrayList<>();
+        List<String> subLabels = new ArrayList<>();
+
+        Runnable updateSubPeopleSpinner = new Runnable() {
+            @Override
+            public void run() {
+                int pIdx = spPerson.getSelectedItemPosition();
+                if (pIdx >= 0 && pIdx < people.size()) {
+                    Person selP = people.get(pIdx);
+                    currentSubPeople.clear();
+                    currentSubPeople.addAll(dbHelper.getSubPeopleForPerson(selP.getId()));
+
+                    subLabels.clear();
+                    subLabels.add("-- General (Sin subetiqueta) --");
+                    for (Person sub : currentSubPeople) {
+                        subLabels.add("🏷️ " + sub.getName());
+                    }
+                    subLabels.add("➕ Nuevo subdeudor / subetiqueta...");
+
+                    ArrayAdapter<String> subAdapter = new ArrayAdapter<>(MainActivity.this, android.R.layout.simple_spinner_dropdown_item, subLabels);
+                    spSubperson.setAdapter(subAdapter);
+                    if (layoutSubperson != null) layoutSubperson.setVisibility(View.VISIBLE);
+                } else {
+                    if (layoutSubperson != null) layoutSubperson.setVisibility(View.GONE);
+                }
+            }
+        };
+
+        spPerson.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+                updateSubPeopleSpinner.run();
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        spSubperson.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View v, int position, long id) {
+                if (position == subLabels.size() - 1 && subLabels.size() > 1) {
+                    int pIdx = spPerson.getSelectedItemPosition();
+                    if (pIdx >= 0 && pIdx < people.size()) {
+                        Person selP = people.get(pIdx);
+                        showAddSubPersonDialog(selP, () -> {
+                            updateSubPeopleSpinner.run();
+                            if (!currentSubPeople.isEmpty()) {
+                                spSubperson.setSelection(currentSubPeople.size());
+                            }
+                        });
+                    }
+                }
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        });
+
+        updateSubPeopleSpinner.run();
 
         String[] msiOptions = {"3 meses", "6 meses", "9 meses", "12 meses", "18 meses", "24 meses"};
         int[] msiVals = {3, 6, 9, 12, 18, 24};
@@ -1015,6 +1113,11 @@ public class MainActivity extends AppCompatActivity {
 
                     String cardId = cards.get(cardIdx).getId();
                     String personId = people.get(personIdx).getId();
+                    String subPersonId = null;
+                    int subIdx = spSubperson.getSelectedItemPosition();
+                    if (subIdx > 0 && subIdx <= currentSubPeople.size()) {
+                        subPersonId = currentSubPeople.get(subIdx - 1).getId();
+                    }
 
                     if (cbMsi.isChecked()) {
                         int months = msiVals[spMonths.getSelectedItemPosition()];
@@ -1022,7 +1125,7 @@ public class MainActivity extends AppCompatActivity {
                         dbHelper.insertInstallmentPlan(plan);
                         Toast.makeText(this, "Compra diferida a " + months + " MSI registrada.", Toast.LENGTH_SHORT).show();
                     } else {
-                        Movement mov = new Movement(null, concept, amount, date, cardId, personId, 0, System.currentTimeMillis());
+                        Movement mov = new Movement(null, concept, amount, date, cardId, personId, subPersonId, 0, System.currentTimeMillis());
                         dbHelper.insertMovement(mov);
                         Toast.makeText(this, "Gasto registrado exitosamente.", Toast.LENGTH_SHORT).show();
                     }
@@ -1398,6 +1501,76 @@ public class MainActivity extends AppCompatActivity {
                 tvOwedBadge.setTextColor(Color.parseColor("#4ade80"));
             }
 
+            // Subdeudores / Subetiquetas de esta persona
+            LinearLayout layoutSubpeopleSec = item.findViewById(R.id.layout_person_subpeople_section);
+            LinearLayout layoutSubpeopleList = item.findViewById(R.id.layout_person_subpeople_list);
+            Button btnAddSub = item.findViewById(R.id.btn_item_person_add_subperson);
+            TextView tvSubHeader = item.findViewById(R.id.tv_person_subpeople_header);
+
+            if (layoutSubpeopleSec != null && layoutSubpeopleList != null) {
+                if (isPersonal) {
+                    if (tvSubHeader != null) tvSubHeader.setText("🏷️ Subetiquetas de Personal (Coche, Casa, etc.):");
+                    if (btnAddSub != null) btnAddSub.setText("+ Subetiqueta");
+                } else {
+                    if (tvSubHeader != null) tvSubHeader.setText("🏷️ Subdeudores / Subetiquetas de " + p.getName() + ":");
+                    if (btnAddSub != null) btnAddSub.setText("+ Subdeudor");
+                }
+
+                if (btnAddSub != null) {
+                    btnAddSub.setOnClickListener(v -> showAddSubPersonDialog(p, () -> selectTab(4)));
+                }
+
+                layoutSubpeopleList.removeAllViews();
+                List<Person> subs = p.getSubPeople();
+                double generalSpent = dbHelper.getSpentForPersonGeneral(p.getId());
+
+                if (!subs.isEmpty() || generalSpent > 0.001) {
+                    for (Person sub : subs) {
+                        View subView = inflater.inflate(R.layout.item_subperson, layoutSubpeopleList, false);
+                        TextView tvSubName = subView.findViewById(R.id.tv_subperson_name);
+                        TextView tvSubSpent = subView.findViewById(R.id.tv_subperson_spent);
+                        Button btnSubDel = subView.findViewById(R.id.btn_subperson_delete);
+
+                        tvSubName.setText("🏷️ " + sub.getName());
+                        tvSubSpent.setText(formatCurrency(sub.getSpentForSubPerson()));
+
+                        btnSubDel.setOnClickListener(v -> {
+                            new AlertDialog.Builder(this)
+                                    .setTitle("Eliminar " + (isPersonal ? "Subetiqueta" : "Subdeudor"))
+                                    .setMessage("¿Deseas eliminar '" + sub.getName() + "'?")
+                                    .setPositiveButton("Eliminar", (d, w) -> {
+                                        dbHelper.deleteSubPerson(sub.getId());
+                                        selectTab(4);
+                                    })
+                                    .setNegativeButton("Cancelar", null)
+                                    .show();
+                        });
+
+                        layoutSubpeopleList.addView(subView);
+                    }
+
+                    if (generalSpent > 0.001 && !subs.isEmpty()) {
+                        View genView = inflater.inflate(R.layout.item_subperson, layoutSubpeopleList, false);
+                        TextView tvGenName = genView.findViewById(R.id.tv_subperson_name);
+                        TextView tvGenSpent = genView.findViewById(R.id.tv_subperson_spent);
+                        Button btnGenDel = genView.findViewById(R.id.btn_subperson_delete);
+
+                        tvGenName.setText("🏷️ General / Sin subetiqueta");
+                        tvGenSpent.setText(formatCurrency(generalSpent));
+                        btnGenDel.setVisibility(View.GONE);
+
+                        layoutSubpeopleList.addView(genView);
+                    }
+                } else {
+                    TextView tvNone = new TextView(this);
+                    tvNone.setText(isPersonal ? "Sin subetiquetas creadas aún (ej. Coche, Casa)" : "Sin subdeudores registrados");
+                    tvNone.setTextColor(Color.parseColor("#64748b"));
+                    tvNone.setTextSize(12f);
+                    tvNone.setPadding(0, 4, 0, 4);
+                    layoutSubpeopleList.addView(tvNone);
+                }
+            }
+
             // Gastos pendientes de apartar para esta persona
             LinearLayout layoutPendingSec = item.findViewById(R.id.layout_person_pending_movements_section);
             LinearLayout layoutPendingList = item.findViewById(R.id.layout_person_pending_movements_list);
@@ -1414,7 +1587,11 @@ public class MainActivity extends AppCompatActivity {
                         TextView tvAmounts = movView.findViewById(R.id.tv_pending_mov_amounts);
                         Button btnApartarMov = movView.findViewById(R.id.btn_pending_mov_apartar);
 
-                        tvConcept.setText(m.getConcept());
+                        String conceptTxt = m.getConcept();
+                        if (m.getSubPersonName() != null && !m.getSubPersonName().isEmpty()) {
+                            conceptTxt += " [🏷️ " + m.getSubPersonName() + "]";
+                        }
+                        tvConcept.setText(conceptTxt);
                         tvDetails.setText((m.getCardName() != null ? m.getCardName() : "Sin Tarjeta") + " • " + m.getDate());
                         if (m.getTotalSetAside() > 0.001) {
                             tvAmounts.setText("Total: " + formatCurrency(m.getAmount()) + " • Apartado: " + formatCurrency(m.getTotalSetAside()) + " • Falta: " + formatCurrency(m.getPendingAmount()));
@@ -1547,7 +1724,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void showPersonDialog() {
         View dView = LayoutInflater.from(this).inflate(R.layout.dialog_person, null);
+        TextView tvTitle = dView.findViewById(R.id.tv_dialog_person_title);
         EditText etName = dView.findViewById(R.id.et_person_name);
+        if (tvTitle != null) tvTitle.setText("Agregar Persona / Deudor");
 
         new AlertDialog.Builder(this)
                 .setView(dView)
@@ -1561,6 +1740,40 @@ public class MainActivity extends AppCompatActivity {
                     dbHelper.insertPerson(p);
                     Toast.makeText(this, "Persona agregada correctamente.", Toast.LENGTH_SHORT).show();
                     selectTab(4);
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void showAddSubPersonDialog(Person parentPerson, Runnable onAdded) {
+        View dView = LayoutInflater.from(this).inflate(R.layout.dialog_person, null);
+        TextView tvTitle = dView.findViewById(R.id.tv_dialog_person_title);
+        TextView tvLabel = dView.findViewById(R.id.tv_dialog_person_label);
+        EditText etName = dView.findViewById(R.id.et_person_name);
+
+        boolean isPersonal = parentPerson.getName() != null && parentPerson.getName().equalsIgnoreCase("Personal");
+        if (tvTitle != null) {
+            tvTitle.setText(isPersonal ? "🏷️ Nueva Subetiqueta para Personal" : "🏷️ Nuevo Subdeudor para " + parentPerson.getName());
+        }
+        if (tvLabel != null) {
+            tvLabel.setText(isPersonal ? "Nombre de la subetiqueta (ej. Coche, Casa, Super, Salidas)" : "Nombre o concepto de este subdeudor");
+        }
+        if (etName != null) {
+            etName.setHint(isPersonal ? "ej. Coche, Casa" : "Nombre del subdeudor");
+        }
+
+        new AlertDialog.Builder(this)
+                .setView(dView)
+                .setPositiveButton("Guardar", (dialog, which) -> {
+                    String name = etName != null ? etName.getText().toString().trim() : "";
+                    if (name.isEmpty()) {
+                        Toast.makeText(this, "Ingresa un nombre.", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    Person sub = new Person(null, name, parentPerson.getId(), System.currentTimeMillis());
+                    dbHelper.insertPerson(sub);
+                    Toast.makeText(this, (isPersonal ? "Subetiqueta guardada" : "Subdeudor guardado") + " con éxito.", Toast.LENGTH_SHORT).show();
+                    if (onAdded != null) onAdded.run();
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
